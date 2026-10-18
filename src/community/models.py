@@ -66,4 +66,4 @@ class CommunityMember(models.Model):
         unique_together = ("community", "user")
 
     def __str__(self):
-        return f"{self.user.username} - {self.community.name}"
+        return f"{self.user.username} in {self.community.name}"

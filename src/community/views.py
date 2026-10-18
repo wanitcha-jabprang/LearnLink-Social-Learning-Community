@@ -1,11 +1,13 @@
 from django.contrib import messages
+from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import get_object_or_404, redirect
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 
-from users.models import User
 from .models import Community, CommunityMember
+
+User = get_user_model()
 
 
 def community_list(request):
@@ -34,25 +36,59 @@ def create_community(request):
     name = request.POST.get("name", "").strip()
     description = request.POST.get("description", "").strip()
     image = request.FILES.get("image")
+    is_private = request.POST.get("is_private") == "true"
 
     if not name or len(name) > 100:
         messages.error(request, "กรุณากรอกชื่อชุมชนไม่เกิน 100 ตัวอักษร")
         return _redirect_to(request, "/#community-create")
 
-    # สร้าง Community พร้อมรองรับรูปปกกลุ่ม (image)
     community = Community.objects.create(
         name=name,
         description=description or "พื้นที่สำหรับแบ่งปันและเรียนรู้ไปด้วยกัน",
         image=image,
-        is_private=request.POST.get("is_private") == "true",
+        is_private=is_private,
         owner=request.user,
     )
     
-    # Encapsulation: เรียกใช้ Helper Method จาก Model เพื่อสร้าง Invite Code
     code = community.generate_invite_code()
-    
     CommunityMember.objects.get_or_create(community=community, user=request.user)
-    messages.success(request, f"สร้างชุมชน {community.name} แล้ว · รหัสเชิญ {code}")
+    
+    if is_private:
+        messages.success(request, f"สร้างชุมชนส่วนตัว '{community.name}' เรียบร้อยแล้ว · รหัสเชิญ: {code}")
+    else:
+        messages.success(request, f"สร้างชุมชนสาธารณะ '{community.name}' เรียบร้อยแล้ว")
+
+    return _redirect_to(request, f"/#community-{community.pk}")
+
+
+@login_required
+@require_POST
+def edit_community(request, community_id):
+    """เจ้าของชุมชนแก้ไขข้อมูลชุมชน (ชื่อ, รายละเอียด, รูปปก, สถานะส่วนตัว)"""
+    community = get_object_or_404(Community, id=community_id)
+
+    if community.owner != request.user:
+        messages.error(request, "คุณไม่มีสิทธิ์ในการแก้ไขชุมชนนี้")
+        return _redirect_to(request, f"/#community-{community.pk}")
+
+    name = request.POST.get("name", "").strip()
+    description = request.POST.get("description", "").strip()
+    image = request.FILES.get("image")
+    is_private = request.POST.get("is_private") == "true"
+
+    if not name or len(name) > 100:
+        messages.error(request, "กรุณากรอกชื่อชุมชนไม่เกิน 100 ตัวอักษร")
+        return _redirect_to(request, f"/#community-{community.pk}")
+
+    community.name = name
+    community.description = description
+    community.is_private = is_private
+    
+    if image:
+        community.image = image
+        
+    community.save()
+    messages.success(request, f"อัปเดตข้อมูลชุมชน '{community.name}' เรียบร้อยแล้ว")
     return _redirect_to(request, f"/#community-{community.pk}")
 
 
@@ -72,7 +108,7 @@ def join_community(request, community_id):
 @require_POST
 def join_community_by_code(request):
     code = request.POST.get("invite_code", "").strip().upper()
-    community = Community.filter(invite_code=code).first() if hasattr(Community, 'filter') else Community.objects.filter(invite_code=code).first()
+    community = Community.objects.filter(invite_code=code).first()
     if community is None:
         messages.error(request, "ไม่พบชุมชนจากรหัสเชิญนี้")
         return _redirect_to(request)
@@ -96,8 +132,24 @@ def leave_community(request, community_id):
 
 @login_required
 @require_POST
+def delete_community(request, community_id):
+    """เจ้าของชุมชนลบชุมชน"""
+    community = get_object_or_404(Community, id=community_id)
+
+    if community.owner != request.user:
+        messages.error(request, "คุณไม่มีสิทธิ์ในการลบชุมชนนี้")
+        return _redirect_to(request, f"/#community-{community.pk}")
+
+    name = community.name
+    community.delete()
+    messages.success(request, f"ลบชุมชน {name} เรียบร้อยแล้ว")
+    return _redirect_to(request, "/#communities-page")
+
+
+@login_required
+@require_POST
 def transfer_ownership(request, community_id):
-    """โอนสิทธิ์เจ้าของกลุ่มให้สมาชิกคนอื่น (ใช้วิธี Encapsulation จาก Model)"""
+    """โอนสิทธิ์เจ้าของกลุ่มให้สมาชิกคนอื่น"""
     community = get_object_or_404(Community, id=community_id)
     
     if community.owner != request.user:
@@ -107,7 +159,6 @@ def transfer_ownership(request, community_id):
     new_owner_id = request.POST.get("new_owner_id")
     new_owner = get_object_or_404(User, pk=new_owner_id)
 
-    # Encapsulation: เรียก method transfer_ownership ที่อยู่ใน Community Model
     if community.transfer_ownership(new_owner):
         messages.success(request, f"โอนความเป็นเจ้าของให้ {new_owner.username} เรียบร้อยแล้ว")
     else:
