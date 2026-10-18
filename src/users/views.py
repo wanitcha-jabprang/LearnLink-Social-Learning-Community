@@ -1,14 +1,15 @@
 from django.contrib import messages
 from django.contrib.auth import authenticate, login, logout
+from django.contrib.auth.decorators import login_required
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 from django.core.validators import validate_email
-from django.shortcuts import redirect
+from django.shortcuts import get_object_or_404, redirect
 from django.utils.text import slugify
 from django.views.decorators.http import require_POST
 
-from .models import User
-
+from .forms import UserProfileForm
+from .models import Follow, User
 
 def login_view(request):
     if request.method != "POST":
@@ -81,4 +82,55 @@ def profile_view(request):
 @require_POST
 def logout_view(request):
     logout(request)
+    return redirect("home")
+
+@login_required
+def edit_profile_view(request):
+    if request.method == "POST":
+        form = UserProfileForm(
+            request.POST,
+            request.FILES,
+            instance=request.user,
+        )
+
+        if form.is_valid():
+            form.save()
+            messages.success(request, "บันทึกโปรไฟล์เรียบร้อยแล้ว")
+            return redirect("/#profile-page")
+
+        for field_errors in form.errors.values():
+            for error in field_errors:
+                messages.error(request, error)
+
+    return redirect("/#profile-page")
+
+@login_required
+@require_POST
+def follow_view(request, user_id):
+    target_user = get_object_or_404(User, pk=user_id)
+
+    if target_user == request.user:
+        messages.error(request, "ไม่สามารถติดตามตัวเองได้")
+        return redirect("home")
+
+    Follow.objects.get_or_create(
+        follower=request.user,
+        following=target_user,
+    )
+
+    messages.success(request, f"ติดตาม {target_user.username} เรียบร้อยแล้ว")
+    return redirect("home")
+
+
+@login_required
+@require_POST
+def unfollow_view(request, user_id):
+    target_user = get_object_or_404(User, pk=user_id)
+
+    Follow.objects.filter(
+        follower=request.user,
+        following=target_user,
+    ).delete()
+
+    messages.success(request, f"เลิกติดตาม {target_user.username} แล้ว")
     return redirect("home")
