@@ -10,6 +10,7 @@ def home_view(request):
         "comment_set__user",
         "like_set",
     ).order_by("-created_at")
+    
     if request.user.is_authenticated:
         posts = posts.filter(
             Q(community__isnull=True)
@@ -21,6 +22,7 @@ def home_view(request):
         posts = posts.filter(
             Q(community__isnull=True) | Q(community__is_private=False)
         )
+        
     query = request.GET.get("q", "").strip()
     if query:
         search_term = query.removeprefix("#").strip()
@@ -30,11 +32,13 @@ def home_view(request):
             | Q(user__username__icontains=search_term)
             | Q(community__name__icontains=search_term)
         )
+        
     saved_only = request.GET.get("saved") == "1"
     if saved_only and request.user.is_authenticated:
         posts = posts.filter(bookmarks__user=request.user)
     elif saved_only:
         posts = posts.none()
+        
     profile_posts = (
         Post.objects.filter(user=request.user)
         .select_related("user", "community")
@@ -43,6 +47,7 @@ def home_view(request):
         if request.user.is_authenticated
         else []
     )
+    
     liked_post_ids = set()
     saved_post_ids = set()
     if request.user.is_authenticated:
@@ -52,6 +57,7 @@ def home_view(request):
         saved_post_ids = set(
             Bookmark.objects.filter(user=request.user).values_list("post_id", flat=True)
         )
+        
     communities = Community.objects.all()
     if request.user.is_authenticated:
         communities = communities.filter(
@@ -61,6 +67,7 @@ def home_view(request):
         ).distinct()
     else:
         communities = communities.filter(is_private=False)
+        
     return render(
         request,
         "home/home.html",
@@ -93,5 +100,6 @@ def home_view(request):
         },
     )
 
+
 def explore_view(request):
-    return render(request, "้home/explore.html")
+    return render(request, "home/explore.html")
