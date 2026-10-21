@@ -144,13 +144,45 @@
                     <p class="feed-message" data-profile-empty>คุณยังไม่มีโพสต์ที่แบ่งปัน</p>
                     {% endfor %}
                 </div>
-                <section class="card edit-preview" id="profile-edit">
-                    <h2>แก้ไขโปรไฟล์</h2>
-                    <div class="profile-image-edit"><span class="avatar profile-large">ม</span><label class="button-secondary file-picker" for="avatar-upload">เลือกรูปโปรไฟล์</label><input class="file-input-hidden" id="avatar-upload" type="file" accept="image/*"></div>
-                    <label>ชื่อที่แสดง<input type="text" value="มินตรา วัฒนกิจ"></label>
-                    <label>แนะนำตัว<textarea rows="3">กำลังเรียนรู้ Python, Data และการออกแบบผลิตภัณฑ์</textarea></label>
-                    <a class="button-primary" href="#profile-page">บันทึกโปรไฟล์</a>
-                </section>
+
+<form class="card edit-preview" id="profile-edit"
+      action="{% url 'edit_profile' %}" method="post"
+      enctype="multipart/form-data">
+    {% csrf_token %}
+
+    <h2>แก้ไขโปรไฟล์</h2>
+
+    <div class="profile-image-edit">
+        {% if request.user.profile_image %}
+            <img class="avatar profile-large"
+                 src="{{ request.user.profile_image.url }}"
+                 alt="รูปโปรไฟล์ปัจจุบัน">
+        {% else %}
+            <span class="avatar profile-large">
+                {{ request.user.full_name|default:request.user.username|slice:":1"|upper }}
+            </span>
+        {% endif %}
+
+        <label class="button-secondary file-picker"
+               for="avatar-upload">เลือกรูปโปรไฟล์</label>
+
+        <input class="file-input-hidden" id="avatar-upload"
+               name="profile_image" type="file" accept="image/*">
+    </div>
+
+    <label for="profile-full-name">ชื่อที่แสดง</label>
+    <input id="profile-full-name" type="text" name="full_name"
+           value="{{ request.user.full_name }}" maxlength="100" required>
+
+    <label for="profile-bio">แนะนำตัว</label>
+    <textarea id="profile-bio" name="bio"
+              rows="3">{{ request.user.bio }}</textarea>
+
+    <button class="button-primary" type="submit">
+        บันทึกโปรไฟล์
+    </button>
+</form>
+
             </section>
 
             {% include "includes/community_hub.html" %}
@@ -194,7 +226,42 @@
             <section class="card side-card"><h2>หัวข้อกำลังมาแรง</h2><div class="topic-list"><a class="topic-item" href="#home-page"><span class="topic-name">#Python</span><span class="topic-count">128 โพสต์</span></a><a class="topic-item" href="#home-page"><span class="topic-name">#Django</span><span class="topic-count">86 โพสต์</span></a><a class="topic-item" href="#home-page"><span class="topic-name">#ออกแบบ UX</span><span class="topic-count">54 โพสต์</span></a></div></section>
             <section class="card side-card"><h2>ชุมชนแนะนำ</h2><div class="community-list"><a class="community-item" href="#communities-page"><span class="community-mark">Py</span><span class="community-info"><strong>คนรัก Python</strong><span class="community-count">240 สมาชิก</span></span></a><a class="community-item" href="#communities-page"><span class="community-mark mint-mark">UX</span><span class="community-info"><strong>ห้องเรียน UX/UI</strong><span class="community-count">128 สมาชิก</span></span></a></div></section>
             <section class="card side-card"><div class="side-heading"><h2>กิจกรรมใกล้ถึง</h2><a href="#profile-page">ดูทั้งหมด</a></div><a class="upcoming-event" href="#profile-page"><span class="event-date"><strong>22</strong><small>ต.ค.</small></span><span><strong>Study with Python</strong><small>พฤหัสบดี · 19:00 น.</small></span></a><a class="upcoming-event" href="#profile-page"><span class="event-date event-date-mint"><strong>25</strong><small>ต.ค.</small></span><span><strong>UX Portfolio Review</strong><small>อาทิตย์ · 14:00 น.</small></span></a></section>
-            <section class="card side-card"><div class="side-heading"><h2>ผู้เรียนที่น่าติดตาม</h2><a href="#profile-page">ดูทั้งหมด</a></div><div class="suggested-learner"><span class="avatar-small learner-avatar">พ</span><span><strong>พลอย ใจดี</strong><small>UX Designer · 8 ชุมชนร่วม</small></span><a href="#profile-page" aria-label="ดูโปรไฟล์พลอย">＋</a></div><div class="suggested-learner"><span class="avatar-small learner-avatar learner-avatar-mint">น</span><span><strong>นนท์ พัฒนกิจ</strong><small>Python · Data Science</small></span><a href="#profile-page" aria-label="ดูโปรไฟล์นนท์">＋</a></div></section>
+                       <section class="card side-card">
+                <div class="side-heading">
+                    <h2>ผู้เรียนที่น่าติดตาม</h2>
+                </div>
+
+                <div class="suggested-learners">
+                    {% for suggested_user in suggested_users %}
+                        <div class="suggested-learner">
+                            <span class="avatar-small learner-avatar">
+                                {{ suggested_user.full_name|default:suggested_user.username|slice:":1"|upper }}
+                            </span>
+
+                            <span>
+                                <strong>
+                                    {{ suggested_user.full_name|default:suggested_user.username }}
+                                </strong>
+                                <small>@{{ suggested_user.username }}</small>
+                            </span>
+
+                            {% if suggested_user.pk in followed_user_ids %}
+                                <form action="{% url 'unfollow' suggested_user.pk %}" method="post">
+                                    {% csrf_token %}
+                                    <button type="submit" aria-label="เลิกติดตาม {{ suggested_user.username }}">−</button>
+                                </form>
+                            {% else %}
+                                <form action="{% url 'follow' suggested_user.pk %}" method="post">
+                                    {% csrf_token %}
+                                    <button type="submit" aria-label="ติดตาม {{ suggested_user.username }}">＋</button>
+                                </form>
+                            {% endif %}
+                        </div>
+                    {% empty %}
+                        <p>ยังไม่มีผู้เรียนอื่นให้แนะนำ</p>
+                    {% endfor %}
+                </div>
+            </section>
             <section class="card side-card learning-tip"><span class="material-symbols-rounded">auto_awesome</span><h2>เรียนรู้วันละนิด</h2><p>การแบ่งปันสิ่งที่เรียนรู้ ช่วยให้เราเข้าใจได้ลึกขึ้น</p></section>
         </aside>
     </div>
