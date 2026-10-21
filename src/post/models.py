@@ -59,7 +59,8 @@ class Like(TimestampedModel):
         User,
         on_delete=models.CASCADE
     )
-   class Meta:
+
+    class Meta:
         unique_together = ("post", "user")
 
 
