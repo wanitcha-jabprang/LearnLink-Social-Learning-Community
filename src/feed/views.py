@@ -27,15 +27,30 @@ def home_view(request):
         )
 
     query = request.GET.get("q", "").strip()
-
+    searched_communities = Community.objects.none()
     if query:
         search_term = query.removeprefix("#").strip()
+        
+        # ค้นหาโพสต์จาก: เนื้อหาโพสต์ | ชื่อจริงผู้โพสต์ | username ผู้โพสต์ | ชื่อ Community
         posts = posts.filter(
             Q(content__icontains=search_term)
             | Q(user__full_name__icontains=search_term)
             | Q(user__username__icontains=search_term)
             | Q(community__name__icontains=search_term)
+        ).distinct()
+
+        # ค้นหา Community ตามชื่อหรือรายละเอียด เพื่อนำไปแสดงในผลการค้นหาเพิ่มเติม
+        searched_communities = Community.objects.filter(
+            Q(name__icontains=search_term) | Q(description__icontains=search_term)
         )
+        if request.user.is_authenticated:
+            searched_communities = searched_communities.filter(
+                Q(is_private=False)
+                | Q(communitymember__user=request.user)
+                | Q(owner=request.user)
+            ).distinct()
+        else:
+            searched_communities = searched_communities.filter(is_private=False)
 
     saved_only = request.GET.get("saved") == "1"
 
@@ -102,6 +117,7 @@ def home_view(request):
             "liked_post_ids": liked_post_ids,
             "saved_post_ids": saved_post_ids,
             "search_query": query,
+            "searched_communities": searched_communities,
             "saved_only": saved_only,
             "communities": communities.order_by("name"),
             "suggested_users": suggested_users,
