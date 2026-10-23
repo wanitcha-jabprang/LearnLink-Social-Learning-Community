@@ -13,7 +13,11 @@ services:
       MYSQL_ROOT_PASSWORD: root123
 
     ports:
+<<<<<<< Updated upstream
       - "3308:3306"
+=======
+      - "3307:3306"
+>>>>>>> Stashed changes
 
     volumes:
       - mysql_data:/var/lib/mysql
