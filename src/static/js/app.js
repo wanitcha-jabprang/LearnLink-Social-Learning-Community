@@ -34,7 +34,7 @@
         if (!file) return;
         if (!file.type.startsWith("image/") || file.size > 10 * 1024 * 1024) {
             profileCoverInput.value = "";
-            profileCoverSave.disabled = true;
+            profileCoverSave.hidden = true;
             profileCoverStatus.textContent = "กรุณาเลือกรูปภาพขนาดไม่เกิน 10 MB";
             return;
         }
@@ -42,8 +42,8 @@
         profileCoverUrl = URL.createObjectURL(file);
         profileCoverPreview.src = profileCoverUrl;
         profileCoverPreview.hidden = false;
-        profileCoverSave.disabled = false;
-        profileCoverStatus.textContent = "ตัวอย่างรูปปกพร้อมแล้ว กดบันทึกรูปปกเพื่อยืนยัน";
+        profileCoverSave.hidden = false;
+        profileCoverStatus.textContent = "ตัวอย่างรูปปกพร้อมแล้ว ตรวจดูแล้วกดบันทึกได้เลย";
     });
 
     const loadProfileImage = (image, sourceUrl) => {

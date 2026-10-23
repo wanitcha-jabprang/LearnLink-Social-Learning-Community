@@ -1422,7 +1422,7 @@ body:has(#app-preview .prototype-page:target, #app-preview .prototype-page :targ
 
 .profile-cover {
     position: relative;
-    overflow: hidden;
+    z-index: 2;
     padding-bottom: 20px;
 }
 
@@ -1466,6 +1466,7 @@ body:has(#app-preview .prototype-page:target, #app-preview .prototype-page :targ
 }
 
 .cover-save {
+    display: inline-flex;
     min-height: 32px;
     padding: 6px 10px;
     border-color: rgb(255 255 255 / 60%);
@@ -1474,9 +1475,8 @@ body:has(#app-preview .prototype-page:target, #app-preview .prototype-page :targ
     font-size: 11px;
 }
 
-.cover-save:disabled {
-    cursor: not-allowed;
-    opacity: .65;
+.cover-save[hidden] {
+    display: none;
 }
 
 .cover-upload-status {
@@ -1608,8 +1608,32 @@ body:has(#app-preview .prototype-page:target, #app-preview .prototype-page :targ
     font-size: 11px;
 }
 
+.profile-account-actions {
+    display: flex;
+    flex-wrap: nowrap;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+    margin-left: auto;
+}
+
+.profile-account-actions .profile-logout,
+.profile-account-actions .account-delete-trigger {
+    white-space: nowrap;
+}
+
 .profile-edit {
     margin: 0 0 0 auto;
+}
+
+.profile-account-actions .profile-edit {
+    margin: 0;
+}
+
+.profile-account-actions .account-delete-confirm {
+    position: relative;
+    flex: 0 0 auto;
 }
 
 .profile-logout {
@@ -1628,6 +1652,69 @@ body:has(#app-preview .prototype-page:target, #app-preview .prototype-page :targ
     margin: 0 22px;
     padding-top: 12px;
     border-top: 1px solid var(--line);
+}
+
+.profile-community-bar {
+    margin: 16px 0;
+    padding: 16px;
+}
+
+.profile-community-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.profile-community-heading h2 {
+    margin: 0;
+    font-size: 14px;
+}
+
+.profile-community-heading > span {
+    color: var(--muted);
+    font-size: 11px;
+}
+
+.profile-community-list {
+    display: flex;
+    gap: 8px;
+    margin-top: 11px;
+    overflow-x: auto;
+    padding-bottom: 3px;
+}
+
+.profile-community-chip {
+    display: inline-flex;
+    min-height: 40px;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 11px 6px 7px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: #fff;
+    color: #42516a;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.profile-community-chip:hover {
+    border-color: #c7d2fe;
+    background: var(--primary-soft);
+    color: var(--primary);
+}
+
+.profile-community-chip .joined-community-mark {
+    width: 27px;
+    height: 27px;
+    border-radius: 50%;
+}
+
+.profile-community-empty {
+    margin: 0;
+    color: var(--muted);
+    font-size: 12px;
 }
 
 .profile-page .feed-list {
@@ -1778,20 +1865,6 @@ body:has(#app-preview .prototype-page:target, #app-preview .prototype-page :targ
     color: var(--ink);
 }
 
-.account-delete-panel {
-    display: grid;
-    gap: 10px;
-    margin: 15px 0;
-    padding: 20px;
-    border: 1px solid #f3c6c3;
-}
-
-.account-delete-panel h2,
-.account-delete-panel p {
-    margin: 0;
-}
-
-.account-delete-panel > p,
 .account-delete-confirm form p {
     color: var(--muted);
     font-size: 12px;
@@ -1808,6 +1881,19 @@ body:has(#app-preview .prototype-page:target, #app-preview .prototype-page :targ
     font-size: 12px;
     font-weight: 700;
     list-style-position: inside;
+}
+
+.account-delete-trigger {
+    cursor: pointer;
+    list-style: none;
+}
+
+.account-delete-trigger::-webkit-details-marker {
+    display: none;
+}
+
+.account-delete-confirm summary.account-delete-trigger {
+    color: white;
 }
 
 .account-delete-confirm form {
@@ -1830,6 +1916,9 @@ body:has(#app-preview .prototype-page:target, #app-preview .prototype-page :targ
 }
 
 .button-danger {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     width: fit-content;
     min-height: 40px;
     padding: 9px 14px;
@@ -1841,6 +1930,24 @@ body:has(#app-preview .prototype-page:target, #app-preview .prototype-page :targ
     font: inherit;
     font-size: 12px;
     font-weight: 700;
+}
+
+.profile-account-actions .account-delete-confirm form {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    z-index: 3;
+    width: min(320px, calc(100vw - 40px));
+    padding: 16px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    box-sizing: border-box;
+    background: white;
+    box-shadow: 0 12px 32px rgb(31 45 61 / 16%);
+}
+
+.cover-upload-status:empty {
+    display: none;
 }
 
 .profile-page:has(.edit-preview:target) {
@@ -3320,6 +3427,12 @@ body:has(#app-preview .prototype-page:target, #app-preview .prototype-page :targ
         left: 16px;
         width: 66px;
         height: 66px;
+    }
+
+    .profile-account-actions {
+        width: 100%;
+        justify-content: flex-start;
+        margin: 0;
     }
 
     .profile-identity .profile-edit {

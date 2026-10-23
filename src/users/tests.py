@@ -142,6 +142,51 @@ class AuthenticationFlowTests(TestCase):
                     user.profile_cover.url,
                 )
 
+    def test_profile_actions_and_cover_save_visibility(self):
+        user = User.objects.create_user(
+            username="profileactions",
+            email="profileactions@example.com",
+            password="StrongPass123!",
+            full_name="ผู้เรียน",
+        )
+        self.client.force_login(user)
+
+        response = self.client.get(reverse("home"))
+        content = response.content.decode()
+        actions_start = content.index('class="profile-account-actions"')
+        actions_end = content.index("</div>", actions_start)
+        account_actions = content[actions_start:actions_end]
+        self.assertIn("ออกจากระบบ", account_actions)
+        self.assertIn("ลบบัญชี", account_actions)
+        self.assertIn("แก้ไขโปรไฟล์", account_actions)
+        self.assertIn('id="delete-account-password"', content)
+        self.assertIn("ยืนยันการลบบัญชีถาวร", content)
+        self.assertContains(response, "▧ แก้ไขภาพปก")
+        self.assertContains(response, 'data-profile-cover-save hidden')
+        self.assertNotContains(response, "บันทึกรูปปก")
+
+    def test_profile_shows_communities_the_user_has_joined(self):
+        user = User.objects.create_user(
+            username="communitylearner",
+            email="communitylearner@example.com",
+            password="StrongPass123!",
+            full_name="ผู้เรียน",
+        )
+        community = Community.objects.create(
+            name="ชุมชนคนรักการอ่าน",
+            description="แบ่งปันหนังสือและการอ่าน",
+            owner=user,
+        )
+        CommunityMember.objects.create(community=community, user=user)
+        self.client.force_login(user)
+
+        response = self.client.get(reverse("home"))
+
+        self.assertContains(response, "Community ที่เราอยู่")
+        self.assertContains(response, "ชุมชนคนรักการอ่าน")
+        self.assertContains(response, f'href="#community-{community.pk}"')
+        self.assertContains(response, "1 แห่ง")
+
     def test_account_deletion_requires_password_and_transfers_community_owner(self):
         owner = User.objects.create_user(
             username="leavingowner",

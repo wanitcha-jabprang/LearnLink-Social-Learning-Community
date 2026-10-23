@@ -142,15 +142,52 @@
                         {% endif %}
                         <form class="cover-upload-form" action="{% url 'update_profile_cover' %}" method="post" enctype="multipart/form-data">
                             {% csrf_token %}
-                            <label class="cover-upload" for="cover-upload">▧ เลือกรูปปก</label>
+                            <label class="cover-upload" for="cover-upload">▧ แก้ไขภาพปก</label>
                             <input class="file-input-hidden" id="cover-upload" name="profile_cover" type="file" accept="image/*" data-profile-cover-input required>
-                            <button class="cover-save button-secondary" type="submit" data-profile-cover-save disabled>บันทึกรูปปก</button>
+                            <button class="cover-save button-secondary" type="submit" data-profile-cover-save hidden>บันทึก</button>
                             <span class="cover-upload-status" data-profile-cover-status role="status" aria-live="polite"></span>
                         </form>
                     </div>
-                    <div class="profile-identity"><span class="avatar profile-large">{% if request.user.profile_image %}<img src="{{ request.user.profile_image.url }}" alt="">{% else %}{{ request.user.full_name|default:request.user.username|slice:":1"|upper }}{% endif %}</span><div><h1>{{ request.user.full_name|default:request.user.username }}</h1><p>@{{ request.user.username }} · สมาชิกตั้งแต่ {{ request.user.created_at|date:"M Y" }}</p></div><a class="button-secondary profile-edit" href="#profile-edit">แก้ไขโปรไฟล์</a><form class="profile-logout-form" action="{% url 'logout' %}" method="post">{% csrf_token %}<button class="button-secondary profile-logout" type="submit">ออกจากระบบ</button></form></div>
+                    <div class="profile-identity">
+                        <span class="avatar profile-large">{% if request.user.profile_image %}<img src="{{ request.user.profile_image.url }}" alt="">{% else %}{{ request.user.full_name|default:request.user.username|slice:":1"|upper }}{% endif %}</span>
+                        <div>
+                            <h1>{{ request.user.full_name|default:request.user.username }}</h1>
+                            <p>@{{ request.user.username }} · สมาชิกตั้งแต่ {{ request.user.created_at|date:"M Y" }}</p>
+                        </div>
+                        <div class="profile-account-actions">
+                            <a class="button-secondary profile-edit" href="#profile-edit">แก้ไขโปรไฟล์</a>
+                            <form class="profile-logout-form" action="{% url 'logout' %}" method="post">{% csrf_token %}<button class="button-secondary profile-logout" type="submit">ออกจากระบบ</button></form>
+                            <details class="account-delete-confirm">
+                                <summary class="button-danger account-delete-trigger">ลบบัญชี</summary>
+                                <form action="{% url 'delete_account' %}" method="post">
+                                    {% csrf_token %}
+                                    <p>การลบบัญชีจะนำโพสต์และข้อมูลส่วนตัวออก ชุมชนที่ไม่มีสมาชิกคนอื่นจะถูกลบ ส่วนชุมชนที่ยังมีสมาชิกจะโอนเจ้าของให้สมาชิกเดิมที่เข้าร่วมก่อน</p>
+                                    <p>การดำเนินการนี้ย้อนกลับไม่ได้ กรุณายืนยันด้วยรหัสผ่านบัญชี</p>
+                                    <label for="delete-account-password">รหัสผ่าน</label>
+                                    <input id="delete-account-password" name="password" type="password" autocomplete="current-password" required>
+                                    <button class="button-danger" type="submit">ยืนยันการลบบัญชีถาวร</button>
+                                </form>
+                            </details>
+                        </div>
+                    </div>
                     <p class="profile-bio">{{ request.user.bio|default:"กำลังเรียนรู้และแบ่งปันความรู้ไปพร้อมกับชุมชน LearnLink 🌱" }}</p>
                     <div class="profile-stats"><span><strong>{{ profile_posts|length|stringformat:"02d" }}</strong> โพสต์</span><span><strong>{{ request.user.followers.count }}</strong> ผู้ติดตาม</span><span><strong>{{ request.user.following.count }}</strong> กำลังติดตาม</span></div>
+                </section>
+                <section class="card profile-community-bar" aria-labelledby="profile-communities-title">
+                    <div class="profile-community-heading">
+                        <h2 id="profile-communities-title">Community ที่เราอยู่</h2>
+                        <span>{{ joined_communities|length }} แห่ง</span>
+                    </div>
+                    <div class="profile-community-list">
+                        {% for community in joined_communities %}
+                            <a class="profile-community-chip" href="#community-{{ community.pk }}">
+                                <span class="joined-community-mark">{{ community.name|slice:":2" }}</span>
+                                <span>{{ community.name }}</span>
+                            </a>
+                        {% empty %}
+                            <p class="profile-community-empty">ยังไม่ได้เข้าร่วม Community ใด</p>
+                        {% endfor %}
+                    </div>
                 </section>
                 <div class="section-heading"><div><h2>โพสต์ของ {{ request.user.full_name|default:request.user.username }}</h2><p>สิ่งที่ฉันกำลังเรียนรู้และแบ่งปัน</p></div></div>
                 <div class="feed-list" data-profile-post-list data-server-rendered="true">
@@ -212,21 +249,6 @@
         บันทึกโปรไฟล์
     </button>
 </form>
-<section class="card account-delete-panel">
-    <h2>ลบบัญชี</h2>
-    <p>การลบบัญชีจะนำโพสต์และข้อมูลส่วนตัวของคุณออก ชุมชนที่ไม่มีสมาชิกคนอื่นจะถูกลบ ส่วนชุมชนที่ยังมีสมาชิกจะโอนเจ้าของให้สมาชิกเดิมที่เข้าร่วมก่อน</p>
-    <details class="account-delete-confirm">
-        <summary>ลบบัญชีของฉัน</summary>
-        <form action="{% url 'delete_account' %}" method="post">
-            {% csrf_token %}
-            <p>การดำเนินการนี้ย้อนกลับไม่ได้ กรุณายืนยันด้วยรหัสผ่านบัญชีของคุณ</p>
-            <label for="delete-account-password">รหัสผ่าน</label>
-            <input id="delete-account-password" name="password" type="password" autocomplete="current-password" required>
-            <button class="button-danger" type="submit">ยืนยันการลบบัญชีถาวร</button>
-        </form>
-    </details>
-</section>
-
             </section>
 
             {% include "includes/community_hub.html" %}
@@ -315,5 +337,5 @@
     </div>
 </div>
 {% endif %}
-<script src="{% static 'js/app.js' %}?v=20261023-profile-actions" defer></script>
+<script src="{% static 'js/app.js' %}?v=20261023-profile-communities" defer></script>
 {% endblock %}
