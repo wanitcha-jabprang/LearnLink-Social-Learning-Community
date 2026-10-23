@@ -1,10 +1,8 @@
-
 from django.db.models import Q
 from django.shortcuts import render
 
 from community.models import Community, CommunityMember
 from post.models import Bookmark, Like, Post
-from users.models import Follow, User
 
 
 def home_view(request):
@@ -12,7 +10,8 @@ def home_view(request):
         "comment_set__user",
         "like_set",
     ).order_by("-created_at")
-
+    
+    # คัดกรองโพสต์ตามสิทธิ์การมองเห็น
     if request.user.is_authenticated:
         posts = posts.filter(
             Q(community__isnull=True)
@@ -22,16 +21,16 @@ def home_view(request):
         ).distinct()
     else:
         posts = posts.filter(
-            Q(community__isnull=True)
-            | Q(community__is_private=False)
+            Q(community__isnull=True) | Q(community__is_private=False)
         )
-
+        
     query = request.GET.get("q", "").strip()
     searched_communities = Community.objects.none()
+
     if query:
         search_term = query.removeprefix("#").strip()
         
-        # ค้นหาโพสต์จาก: เนื้อหาโพสต์ | ชื่อจริงผู้โพสต์ | username ผู้โพสต์ | ชื่อ Community
+        # ค้นหาโพสต์: เนื้อหา | ชื่อผู้ใช้ | username | ชื่อกลุ่ม
         posts = posts.filter(
             Q(content__icontains=search_term)
             | Q(user__full_name__icontains=search_term)
@@ -39,7 +38,7 @@ def home_view(request):
             | Q(community__name__icontains=search_term)
         ).distinct()
 
-        # ค้นหา Community ตามชื่อหรือรายละเอียด เพื่อนำไปแสดงในผลการค้นหาเพิ่มเติม
+        # ค้นหากลุ่ม (Community) โดยตรง
         searched_communities = Community.objects.filter(
             Q(name__icontains=search_term) | Q(description__icontains=search_term)
         )
@@ -53,12 +52,11 @@ def home_view(request):
             searched_communities = searched_communities.filter(is_private=False)
 
     saved_only = request.GET.get("saved") == "1"
-
     if saved_only and request.user.is_authenticated:
         posts = posts.filter(bookmarks__user=request.user)
     elif saved_only:
         posts = posts.none()
-
+        
     profile_posts = (
         Post.objects.filter(user=request.user)
         .select_related("user", "community")
@@ -67,21 +65,18 @@ def home_view(request):
         if request.user.is_authenticated
         else []
     )
-
+    
     liked_post_ids = set()
     saved_post_ids = set()
-
     if request.user.is_authenticated:
         liked_post_ids = set(
             Like.objects.filter(user=request.user).values_list("post_id", flat=True)
         )
-
         saved_post_ids = set(
             Bookmark.objects.filter(user=request.user).values_list("post_id", flat=True)
         )
-
+        
     communities = Community.objects.all()
-
     if request.user.is_authenticated:
         communities = communities.filter(
             Q(is_private=False)
@@ -90,24 +85,7 @@ def home_view(request):
         ).distinct()
     else:
         communities = communities.filter(is_private=False)
-
-    # รายชื่อผู้เรียนที่แนะนำ โดยไม่แสดงบัญชีตัวเอง
-    suggested_users = (
-        User.objects.exclude(pk=request.user.pk).order_by("-created_at")[:5]
-        if request.user.is_authenticated
-        else User.objects.none()
-    )
-
-    # ID ของผู้ใช้ที่บัญชีปัจจุบันติดตามอยู่
-    followed_user_ids = (
-        set(
-            Follow.objects.filter(follower=request.user)
-            .values_list("following_id", flat=True)
-        )
-        if request.user.is_authenticated
-        else set()
-    )
-
+        
     return render(
         request,
         "home/home.html",
@@ -120,12 +98,9 @@ def home_view(request):
             "searched_communities": searched_communities,
             "saved_only": saved_only,
             "communities": communities.order_by("name"),
-            "suggested_users": suggested_users,
-            "followed_user_ids": followed_user_ids,
             "joined_communities": (
                 Community.objects.filter(
-                    Q(communitymember__user=request.user)
-                    | Q(owner=request.user)
+                    Q(communitymember__user=request.user) | Q(owner=request.user)
                 )
                 .distinct()
                 .order_by("name")
@@ -135,8 +110,7 @@ def home_view(request):
             "joined_community_ids": (
                 set(
                     Community.objects.filter(
-                        Q(communitymember__user=request.user)
-                        | Q(owner=request.user)
+                        Q(communitymember__user=request.user) | Q(owner=request.user)
                     ).values_list("pk", flat=True)
                 )
                 if request.user.is_authenticated
