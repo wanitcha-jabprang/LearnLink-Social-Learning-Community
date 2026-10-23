@@ -79,3 +79,4 @@ class Bookmark(TimestampedModel):
 
     class Meta:
         unique_together = ("post", "user")
+
