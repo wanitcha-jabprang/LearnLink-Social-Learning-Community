@@ -1,6 +1,6 @@
 <article class="card post-card" data-post-card data-server-post-id="{{ post.pk }}" data-post-key="server-{{ post.pk }}">
     <header class="post-header">
-        <span class="avatar">{{ post.user.full_name|default:post.user.username|slice:":1"|upper }}</span>
+        <span class="avatar">{% if post.user.profile_image %}<img src="{{ post.user.profile_image.url }}" alt="">{% else %}{{ post.user.full_name|default:post.user.username|slice:":1"|upper }}{% endif %}</span>
         <div class="post-author">
             <strong>{{ post.user.full_name|default:post.user.username }}</strong>
             <span class="post-meta">{{ post.created_at|date:"j M Y · H:i" }}{% if post.community %} · {{ post.community.name }}{% endif %}</span>

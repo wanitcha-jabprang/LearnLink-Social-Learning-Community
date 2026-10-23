@@ -4,6 +4,7 @@
         <h1>ชุมชนที่ใช่ เริ่มจากความสนใจเดียวกัน</h1>
         <p>เรียนรู้ แลกเปลี่ยน และเติบโตไปพร้อมกับเพื่อนร่วมทาง</p>
     </section>
+
     <div class="community-page-heading">
         <div><h2>สำรวจชุมชน</h2><p>ทุกชุมชนและสมาชิกจัดการด้วย Django</p></div>
         <div class="community-page-actions">
@@ -20,22 +21,39 @@
             <a class="button-primary" href="#community-create">＋ สร้างชุมชน</a>
         </div>
     </div>
+
+    <!-- รายการชุมชนทั้งหมด (Grid) -->
     <div class="community-grid">
         {% for community in communities %}
-        <article class="card community-card">
+        <article class="card community-card overflow-hidden">
+            {% if community.image %}
+            <div class="community-cover-image mb-3">
+                <img src="{{ community.image.url }}" alt="{{ community.name }}" style="width: 100%; height: 140px; object-fit: cover; border-radius: 8px;">
+            </div>
+            {% else %}
             <span class="community-mark">{{ community.name|slice:":2" }}</span>
+            {% endif %}
             <h3>{{ community.name }}</h3>
             <p>{{ community.description }}</p>
-            <span class="community-count">{{ community.communitymember_set.count }} สมาชิก · {% if community.is_private %}ส่วนตัว{% else %}สาธารณะ{% endif %}</span>
+            <span class="community-count">{{ community.get_member_count }} สมาชิก · {% if community.is_private %}ส่วนตัว{% else %}สาธารณะ{% endif %}</span>
             <a class="button-secondary" href="#community-{{ community.pk }}">ดูชุมชน</a>
         </article>
         {% empty %}
         <p class="community-empty-state">ยังไม่มีชุมชน สร้างชุมชนแรกและชวนผู้เรียนมาร่วมกันได้เลย</p>
         {% endfor %}
     </div>
+
+    <!-- หน้ารายละเอียดแต่ละชุมชน -->
     {% for community in communities %}
     <section class="card community-detail-preview" id="community-{{ community.pk }}">
         <a class="button-secondary community-back-link" href="#communities-page">← กลับไปชุมชนทั้งหมด</a>
+        
+        {% if community.image %}
+        <div class="community-detail-cover mb-4">
+            <img src="{{ community.image.url }}" alt="{{ community.name }}" style="width: 100%; max-height: 250px; object-fit: cover; border-radius: 12px;">
+        </div>
+        {% endif %}
+
         <div class="community-detail-top">
             <span class="community-mark">{{ community.name|slice:":2" }}</span>
             <div>
@@ -43,23 +61,147 @@
                 <h2>{{ community.name }}</h2>
                 <p>{{ community.description }}</p>
             </div>
-            {% if community.pk in joined_community_ids %}
-            {% if community.owner_id != request.user.pk %}
-            <form action="{% url 'leave_community' community.pk %}" method="post">
-                {% csrf_token %}<input type="hidden" name="next" value="/#communities-page">
-                <button class="button-secondary" type="submit">ออกจากชุมชน</button>
-            </form>
-            {% endif %}
-            {% else %}
-            <form action="{% url 'join_community' community.pk %}" method="post">
-                {% csrf_token %}<input type="hidden" name="next" value="/#community-{{ community.pk }}">
-                {% if community.is_private %}<label class="visually-hidden" for="invite-{{ community.pk }}">รหัสเชิญ</label><input id="invite-{{ community.pk }}" name="invite_code" type="text" placeholder="รหัสเชิญ" required>{% endif %}
-                <button class="button-primary" type="submit">เข้าร่วมชุมชน</button>
-            </form>
-            {% endif %}
+
+            <!-- ปุ่มจัดการฝั่งขวา (เข้าร่วม / แก้ไขกลุ่ม / ออกจากกลุ่ม / ลบกลุ่ม) -->
+            <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-start;">
+                {% if community.pk in joined_community_ids %}
+                    {% if community.owner_id == request.user.pk %}
+                    <!-- ปุ่มสำหรับเจ้าของกลุ่ม: แก้ไขชุมชน -->
+                    <button class="button-secondary" type="button" onclick="document.getElementById('edit-panel-{{ community.pk }}').toggleAttribute('hidden')">✏️ แก้ไขชุมชน</button>
+
+                    <!-- ปุ่มสำหรับเจ้าของกลุ่ม (เตือนให้โอนสิทธิ์ก่อนออก) -->
+                    <button class="button-secondary" type="button" onclick="alert('คุณเป็นเจ้าของชุมชน ต้องทำการโอนสิทธิ์ความเป็นเจ้าของให้สมาชิกคนอื่นก่อน จึงจะสามารถออกจากชุมชนได้')">ออกจากชุมชน</button>
+
+                    <!-- ปุ่มลบชุมชน (เฉพาะเจ้าของกลุ่ม) -->
+                    <form action="{% url 'delete_community' community.pk %}" method="post">
+                        {% csrf_token %}
+                        <input type="hidden" name="next" value="/#communities-page">
+                        <button class="button-secondary" type="submit" style="color: #dc2626; border-color: #fca5a5;" onclick="return confirm('⚠️ คุณแน่ใจหรือไม่ว่าต้องการลบชุมชนนี้? ข้อมูลและโพสต์ทั้งหมดในชุมชนจะถูกลบถาวรและไม่สามารถกู้คืนได้!')">ลบชุมชน</button>
+                    </form>
+                    {% else %}
+                    <!-- ปุ่มออกจากกลุ่ม (สำหรับสมาชิกทั่วไป) -->
+                    <form action="{% url 'leave_community' community.pk %}" method="post">
+                        {% csrf_token %}
+                        <input type="hidden" name="next" value="/#communities-page">
+                        <button class="button-secondary" type="submit" onclick="return confirm('คุณแน่ใจหรือไม่ว่าต้องการออกจากชุมชนนี้?')">ออกจากชุมชน</button>
+                    </form>
+                    {% endif %}
+                {% else %}
+                    <!-- ปุ่มเข้าร่วมกลุ่ม -->
+                    <form action="{% url 'join_community' community.pk %}" method="post">
+                        {% csrf_token %}
+                        <input type="hidden" name="next" value="/#community-{{ community.pk }}">
+                        {% if community.is_private %}
+                            <label class="visually-hidden" for="invite-{{ community.pk }}">รหัสเชิญ</label>
+                            <input id="invite-{{ community.pk }}" name="invite_code" type="text" placeholder="รหัสเชิญ" required>
+                        {% endif %}
+                        <button class="button-primary" type="submit">เข้าร่วมชุมชน</button>
+                    </form>
+                {% endif %}
+            </div>
         </div>
+
+        <!-- ฟอร์มแก้ไขชุมชน (แสดงซ่อนด้วยปุ่ม "แก้ไขชุมชน") -->
+        {% if request.user == community.owner %}
+        <div id="edit-panel-{{ community.pk }}" class="card my-3" style="padding: 16px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px;" hidden>
+            <h3 style="margin-top: 0; font-size: 16px; font-weight: 600;">✏️ แก้ไขข้อมูลชุมชน</h3>
+            <form action="{% url 'edit_community' community.pk %}" method="post" enctype="multipart/form-data">
+                {% csrf_token %}
+                <input type="hidden" name="next" value="/#community-{{ community.pk }}">
+                
+                <label for="edit-name-{{ community.pk }}" style="display: block; font-weight: 600; margin-top: 10px;">ชื่อชุมชน</label>
+                <input id="edit-name-{{ community.pk }}" name="name" type="text" value="{{ community.name }}" maxlength="100" required style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #cbd5e1;">
+
+                <label for="edit-desc-{{ community.pk }}" style="display: block; font-weight: 600; margin-top: 10px;">เกี่ยวกับชุมชน</label>
+                <textarea id="edit-desc-{{ community.pk }}" name="description" rows="3" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #cbd5e1;">{{ community.description }}</textarea>
+
+                <div class="form-group my-3">
+                    <label style="display: block; font-weight: 600; margin-bottom: 8px;">เปลี่ยนรูปปกชุมชน</label>
+                    <div style="display: flex; align-items: center; gap: 16px;">
+                        <div id="edit-preview-box-{{ community.pk }}" style="width: 80px; height: 80px; border-radius: 12px; background: #e0f2fe; display: flex; align-items: center; justify-content: center; overflow: hidden; border: 1px solid #cbd5e1;">
+                            {% if community.image %}
+                            <img id="edit-preview-img-{{ community.pk }}" src="{{ community.image.url }}" style="width: 100%; height: 100%; object-fit: cover;" alt="Cover">
+                            {% else %}
+                            <span id="edit-preview-text-{{ community.pk }}" style="font-size: 24px;">🖼️</span>
+                            <img id="edit-preview-img-{{ community.pk }}" style="width: 100%; height: 100%; object-fit: cover; display: none;" alt="Cover Preview">
+                            {% endif %}
+                        </div>
+                        <label for="edit-community-image-{{ community.pk }}" class="button-secondary" style="cursor: pointer; margin: 0; padding: 8px 16px; border: 1px solid #cbd5e1; border-radius: 10px; background: white; font-weight: 500;">
+                            เลือกรูปปกใหม่
+                        </label>
+                        <input id="edit-community-image-{{ community.pk }}" name="image" type="file" accept="image/*" style="display: none;" onchange="previewEditCover(this, '{{ community.pk }}')">
+                    </div>
+                </div>
+
+                <fieldset class="visibility-options" style="border: none; padding: 0; margin-top: 10px;">
+                    <legend style="font-weight: 600; font-size: 14px;">การมองเห็นชุมชน</legend>
+                    <label class="visibility-choice"><input type="radio" name="is_private" value="false" {% if not community.is_private %}checked{% endif %}><span><strong>สาธารณะ</strong></span></label>
+                    <label class="visibility-choice" style="margin-left: 12px;"><input type="radio" name="is_private" value="true" {% if community.is_private %}checked{% endif %}><span><strong>ส่วนตัว</strong></span></label>
+                </fieldset>
+
+                <div style="margin-top: 12px; display: flex; gap: 8px;">
+                    <button class="button-primary" type="submit">บันทึกการแก้ไข</button>
+                    <button class="button-secondary" type="button" onclick="document.getElementById('edit-panel-{{ community.pk }}').setAttribute('hidden', 'true')">ยกเลิก</button>
+                </div>
+            </form>
+        </div>
+        {% endif %}
+        
         {% if community.pk in joined_community_ids %}
         <p class="community-invite-code">รหัสเข้าร่วม: <code>{{ community.invite_code }}</code></p>
+        
+        <!-- ส่วนจัดการสมาชิก (ดึง display_name ที่ตั้งไว้มาแสดง) -->
+        <details class="community-member-list-section card my-3" style="padding: 12px; background: #f8fafc; border-radius: 8px;">
+            <summary class="font-medium cursor-pointer" style="cursor: pointer; font-weight: 600;">
+                👥 รายชื่อสมาชิกทั้งหมด ({{ community.get_member_count }} คน)
+            </summary>
+            
+            <ul style="list-style: none; padding-left: 0; margin-top: 10px;">
+                {% for cm in community.communitymember_set.all %}
+                <li style="display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid #e2e8f0;">
+                    <span>
+                        <strong>{{ cm.user.display_name|default:cm.user.username }}</strong>
+                        {% if cm.user == community.owner %}
+                            <span class="badge" style="background: #e0e7ff; color: #4338ca; padding: 2px 6px; border-radius: 4px; font-size: 12px; margin-left: 6px;">เจ้าของกลุ่ม</span>
+                        {% endif %}
+                    </span>
+                    
+                    <!-- ปุ่มลบสมาชิก (เฉพาะเจ้าของกลุ่มเห็น และลบตัวเองไม่ได้) -->
+                    {% if request.user == community.owner and cm.user != community.owner %}
+                    <form action="{% url 'remove_member' community.pk cm.user.pk %}" method="post" style="margin: 0;">
+                        {% csrf_token %}
+                        <input type="hidden" name="next" value="/#community-{{ community.pk }}">
+                        <button type="submit" class="button-secondary" style="color: #dc2626; border-color: #fca5a5; padding: 2px 8px; font-size: 12px;" onclick="return confirm('คุณแน่ใจหรือไม่ว่าต้องการลบสมาชิกคนนี้ออกจากกลุ่ม?')">ลบออก</button>
+                    </form>
+                    {% endif %}
+                </li>
+                {% empty %}
+                <li>ยังไม่มีสมาชิก</li>
+                {% endfor %}
+            </ul>
+
+            <!-- เมนูพิเศษเฉพาะเจ้าของกลุ่ม (โอนสิทธิ์) -->
+            {% if request.user == community.owner %}
+            <div style="margin-top: 15px; padding-top: 10px; border-top: 1px dashed #cbd5e1;">
+                <p style="font-size: 13px; font-weight: 600; margin-bottom: 6px;">👑 โอนสิทธิ์ความเป็นเจ้าของกลุ่ม</p>
+                <form action="{% url 'transfer_ownership' community.pk %}" method="post" style="display: flex; gap: 8px;">
+                    {% csrf_token %}
+                    <input type="hidden" name="next" value="/#community-{{ community.pk }}">
+                    <select name="new_owner_id" style="padding: 4px 8px; border-radius: 6px; border: 1px solid #cbd5e1; flex-grow: 1;" required>
+                        <option value="">-- เลือกสมาชิกที่จะโอนสิทธิ์ --</option>
+                        {% for cm in community.communitymember_set.all %}
+                            {% if cm.user != community.owner %}
+                                <option value="{{ cm.user.pk }}">{{ cm.user.display_name|default:cm.user.username }}</option>
+                            {% endif %}
+                        {% endfor %}
+                    </select>
+                    <button type="submit" class="button-primary" style="padding: 4px 12px; font-size: 13px;" onclick="return confirm('คุณแน่ใจหรือไม่ที่จะโอนสิทธิ์เจ้าของกลุ่ม?')">โอนสิทธิ์</button>
+                </form>
+            </div>
+            {% endif %}
+        </details>
+
+        <!-- ฟอร์มโพสต์ในชุมชน -->
         <section class="community-member-area">
             <h3>แบ่งปันในชุมชนนี้</h3>
             <form class="community-post-form" action="{% url 'create_post' %}" method="post" enctype="multipart/form-data">
@@ -73,6 +215,8 @@
             </form>
         </section>
         {% endif %}
+
+        <!-- ฟีดโพสต์ทั้งหมดในชุมชน -->
         <section class="community-post-wall">
             <h3>โพสต์ทั้งหมด</h3>
             {% with return_anchor="community-"|add:community.pk|stringformat:"s" %}
@@ -87,14 +231,34 @@
         </section>
     </section>
     {% endfor %}
-    <form class="card edit-preview community-create-panel" id="community-create" action="{% url 'create_community' %}" method="post">
+
+    <!-- ฟอร์มสร้างชุมชนใหม่ -->
+    <form class="card edit-preview community-create-panel" id="community-create" action="{% url 'create_community' %}" method="post" enctype="multipart/form-data">
         {% csrf_token %}
         <input type="hidden" name="next" value="/#community-create">
         <h2>สร้างชุมชนใหม่</h2>
+        
         <label for="new-community-name">ชื่อชุมชน</label>
         <input id="new-community-name" name="name" type="text" maxlength="100" placeholder="เช่น คนชอบ Data" required>
+        
         <label for="new-community-description">เกี่ยวกับชุมชน</label>
         <textarea id="new-community-description" name="description" rows="3" placeholder="ชุมชนนี้พูดคุยหรือเรียนรู้เรื่องอะไร?"></textarea>
+        
+        <!-- ส่วนอัปโหลดรูปปกชุมชนแบบ Custom Style -->
+        <div class="form-group my-3">
+            <label style="display: block; font-weight: 600; margin-bottom: 8px;">รูปปกชุมชน</label>
+            <div style="display: flex; align-items: center; gap: 16px;">
+                <div id="cover-preview-box" style="width: 80px; height: 80px; border-radius: 12px; background: #e0f2fe; display: flex; align-items: center; justify-content: center; overflow: hidden; border: 1px solid #cbd5e1;">
+                    <span id="cover-preview-text" style="font-size: 24px; color: #0284c7; font-weight: bold;">🖼️</span>
+                    <img id="cover-preview-img" style="width: 100%; height: 100%; object-fit: cover; display: none;" alt="Cover Preview">
+                </div>
+                <label for="new-community-image" class="button-secondary" style="cursor: pointer; margin: 0; padding: 8px 16px; border: 1px solid #cbd5e1; border-radius: 10px; background: white; font-weight: 500;">
+                    เลือกรูปปกชุมชน
+                </label>
+                <input id="new-community-image" name="image" type="file" accept="image/*" style="display: none;" onchange="previewCommunityCover(this)">
+            </div>
+        </div>
+
         <fieldset class="visibility-options">
             <legend>การมองเห็นชุมชน</legend>
             <label class="visibility-choice"><input type="radio" name="is_private" value="false" checked><span><strong>สาธารณะ</strong><small>ทุกคนค้นหาและเข้าร่วมได้</small></span></label>
@@ -103,3 +267,34 @@
         <button class="button-primary" type="submit">สร้างชุมชน</button>
     </form>
 </section>
+
+<!-- JavaScript พรีวิวรูปปกสำหรับฟอร์มสร้างและฟอร์มแก้ไข -->
+<script>
+function previewCommunityCover(input) {
+    const img = document.getElementById('cover-preview-img');
+    const text = document.getElementById('cover-preview-text');
+    if (input.files && input.files[0]) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            img.src = e.target.result;
+            img.style.display = 'block';
+            if (text) text.style.display = 'none';
+        }
+        reader.readAsDataURL(input.files[0]);
+    }
+}
+
+function previewEditCover(input, id) {
+    const img = document.getElementById('edit-preview-img-' + id);
+    const text = document.getElementById('edit-preview-text-' + id);
+    if (input.files && input.files[0]) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            img.src = e.target.result;
+            img.style.display = 'block';
+            if (text) text.style.display = 'none';
+        }
+        reader.readAsDataURL(input.files[0]);
+    }
+}
+</script>

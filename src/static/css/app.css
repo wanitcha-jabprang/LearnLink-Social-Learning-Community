@@ -1422,22 +1422,39 @@ body:has(#app-preview .prototype-page:target, #app-preview .prototype-page :targ
 
 .profile-cover {
     position: relative;
-    overflow: hidden;
+    z-index: 2;
     padding-bottom: 20px;
 }
 
 .profile-cover-art {
     position: relative;
     height: 145px;
+    overflow: hidden;
     background:
         radial-gradient(circle at 82% 18%, rgb(255 255 255 / 42%) 0 55px, transparent 56px),
         linear-gradient(115deg, #596fe2, #7a9ee9 58%, #a6d8ce);
 }
 
-.cover-upload {
+.profile-cover-image {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.cover-upload-form {
     position: absolute;
     right: 15px;
     bottom: 13px;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.cover-upload {
+    display: inline-flex;
     padding: 7px 11px;
     border: 1px solid rgb(255 255 255 / 60%);
     border-radius: 10px;
@@ -1446,6 +1463,33 @@ body:has(#app-preview .prototype-page:target, #app-preview .prototype-page :targ
     cursor: pointer;
     font-size: 11px;
     font-weight: 700;
+}
+
+.cover-save {
+    display: inline-flex;
+    min-height: 32px;
+    padding: 6px 10px;
+    border-color: rgb(255 255 255 / 60%);
+    background: white;
+    color: var(--ink);
+    font-size: 11px;
+}
+
+.cover-save[hidden] {
+    display: none;
+}
+
+.cover-upload-status {
+    position: absolute;
+    right: 0;
+    bottom: calc(100% + 6px);
+    width: max-content;
+    max-width: min(80vw, 320px);
+    padding: 5px 8px;
+    border-radius: 7px;
+    background: rgb(23 43 77 / 75%);
+    color: white;
+    font-size: 11px;
 }
 
 .file-input-hidden,
@@ -1470,6 +1514,64 @@ body:has(#app-preview .prototype-page:target, #app-preview .prototype-page :targ
     display: flex;
     align-items: center;
     gap: 13px;
+}
+
+.profile-cropper {
+    display: grid;
+    width: min(100%, 280px);
+    justify-items: center;
+    gap: 8px;
+}
+
+.profile-cropper[hidden] {
+    display: none;
+}
+
+.profile-cropper-help,
+.profile-zoom-label,
+.profile-cropper-status {
+    margin: 0;
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.profile-cropper-status {
+    color: var(--ink);
+    font-weight: 700;
+    text-align: center;
+}
+
+.profile-crop-canvas {
+    width: 240px;
+    height: 240px;
+    max-width: 100%;
+    border-radius: 50%;
+    background: #e8edf5;
+    cursor: grab;
+    touch-action: none;
+}
+
+.profile-crop-canvas:active {
+    cursor: grabbing;
+}
+
+.profile-crop-canvas:focus-visible,
+.profile-zoom:focus-visible {
+    outline: 3px solid rgb(72 102 232 / 30%);
+    outline-offset: 3px;
+}
+
+.profile-zoom {
+    width: 100%;
+    accent-color: var(--primary);
+}
+
+.profile-zoom-range {
+    display: flex;
+    width: 100%;
+    justify-content: space-between;
+    color: var(--muted);
+    font-size: 11px;
 }
 
 .file-picker {
@@ -1506,8 +1608,32 @@ body:has(#app-preview .prototype-page:target, #app-preview .prototype-page :targ
     font-size: 11px;
 }
 
+.profile-account-actions {
+    display: flex;
+    flex-wrap: nowrap;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+    margin-left: auto;
+}
+
+.profile-account-actions .profile-logout,
+.profile-account-actions .account-delete-trigger {
+    white-space: nowrap;
+}
+
 .profile-edit {
     margin: 0 0 0 auto;
+}
+
+.profile-account-actions .profile-edit {
+    margin: 0;
+}
+
+.profile-account-actions .account-delete-confirm {
+    position: relative;
+    flex: 0 0 auto;
 }
 
 .profile-logout {
@@ -1526,6 +1652,69 @@ body:has(#app-preview .prototype-page:target, #app-preview .prototype-page :targ
     margin: 0 22px;
     padding-top: 12px;
     border-top: 1px solid var(--line);
+}
+
+.profile-community-bar {
+    margin: 16px 0;
+    padding: 16px;
+}
+
+.profile-community-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.profile-community-heading h2 {
+    margin: 0;
+    font-size: 14px;
+}
+
+.profile-community-heading > span {
+    color: var(--muted);
+    font-size: 11px;
+}
+
+.profile-community-list {
+    display: flex;
+    gap: 8px;
+    margin-top: 11px;
+    overflow-x: auto;
+    padding-bottom: 3px;
+}
+
+.profile-community-chip {
+    display: inline-flex;
+    min-height: 40px;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 11px 6px 7px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: #fff;
+    color: #42516a;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.profile-community-chip:hover {
+    border-color: #c7d2fe;
+    background: var(--primary-soft);
+    color: var(--primary);
+}
+
+.profile-community-chip .joined-community-mark {
+    width: 27px;
+    height: 27px;
+    border-radius: 50%;
+}
+
+.profile-community-empty {
+    margin: 0;
+    color: var(--muted);
+    font-size: 12px;
 }
 
 .profile-page .feed-list {
@@ -1674,6 +1863,91 @@ body:has(#app-preview .prototype-page:target, #app-preview .prototype-page :targ
     border-radius: 11px;
     background: #fbfcfe;
     color: var(--ink);
+}
+
+.account-delete-confirm form p {
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.6;
+}
+
+.account-delete-confirm summary {
+    width: fit-content;
+    padding: 9px 13px;
+    border: 1px solid #e3a4a0;
+    border-radius: 10px;
+    color: #a52f2a;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 700;
+    list-style-position: inside;
+}
+
+.account-delete-trigger {
+    cursor: pointer;
+    list-style: none;
+}
+
+.account-delete-trigger::-webkit-details-marker {
+    display: none;
+}
+
+.account-delete-confirm summary.account-delete-trigger {
+    color: white;
+}
+
+.account-delete-confirm form {
+    display: grid;
+    gap: 10px;
+    margin-top: 12px;
+}
+
+.account-delete-confirm form label {
+    color: #495872;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.account-delete-confirm form input {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--line);
+    border-radius: 11px;
+}
+
+.button-danger {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: fit-content;
+    min-height: 40px;
+    padding: 9px 14px;
+    border: 0;
+    border-radius: 10px;
+    background: #b42318;
+    color: white;
+    cursor: pointer;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.profile-account-actions .account-delete-confirm form {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    z-index: 3;
+    width: min(320px, calc(100vw - 40px));
+    padding: 16px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    box-sizing: border-box;
+    background: white;
+    box-shadow: 0 12px 32px rgb(31 45 61 / 16%);
+}
+
+.cover-upload-status:empty {
+    display: none;
 }
 
 .profile-page:has(.edit-preview:target) {
@@ -3153,6 +3427,12 @@ body:has(#app-preview .prototype-page:target, #app-preview .prototype-page :targ
         left: 16px;
         width: 66px;
         height: 66px;
+    }
+
+    .profile-account-actions {
+        width: 100%;
+        justify-content: flex-start;
+        margin: 0;
     }
 
     .profile-identity .profile-edit {
