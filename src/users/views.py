@@ -2,13 +2,15 @@ from django.contrib import messages
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.password_validation import validate_password
+from django.db import transaction
 from django.core.exceptions import ValidationError
 from django.core.validators import validate_email
 from django.shortcuts import get_object_or_404, redirect
-from django.utils.text import slugify
 from django.views.decorators.http import require_POST
 
-from .forms import UserProfileForm
+from community.models import Community, CommunityMember
+from post.models import Post
+from .forms import ProfileCoverForm, UserProfileForm
 from .models import Follow, User
 
 def login_view(request):
@@ -34,10 +36,20 @@ def register_view(request):
         return redirect("home")
 
     full_name = request.POST.get("full_name", "").strip()
+    username = request.POST.get("username", "").strip()
     email = request.POST.get("email", "").strip()
     password = request.POST.get("password", "")
-    if not full_name or not email or not password:
-        messages.error(request, "กรุณากรอกชื่อ อีเมล และรหัสผ่านให้ครบ")
+    if not full_name or not username or not email or not password:
+        messages.error(request, "กรุณากรอกชื่อ ชื่อผู้ใช้ อีเมล และรหัสผ่านให้ครบ")
+        return redirect("/#signup-page")
+    try:
+        username = User._meta.get_field("username").clean(username, None)
+    except ValidationError as error:
+        for message in error.messages:
+            messages.error(request, message)
+        return redirect("/#signup-page")
+    if User.objects.filter(username__iexact=username).exists():
+        messages.error(request, "ชื่อผู้ใช้นี้ถูกใช้แล้ว")
         return redirect("/#signup-page")
     try:
         validate_email(email)
@@ -50,14 +62,6 @@ def register_view(request):
     if User.objects.filter(email__iexact=email).exists():
         messages.error(request, "อีเมลนี้ถูกใช้แล้ว")
         return redirect("/#signup-page")
-
-    username_base = slugify(email.split("@", 1)[0])[:150] or "learner"
-    username = username_base
-    suffix = 1
-    while User.objects.filter(username=username).exists():
-        suffix += 1
-        suffix_text = str(suffix)
-        username = f"{username_base[:150 - len(suffix_text)]}{suffix_text}"
 
     user = User(username=username, full_name=full_name, email=email)
     try:
@@ -103,6 +107,82 @@ def edit_profile_view(request):
                 messages.error(request, error)
 
     return redirect("/#profile-page")
+
+
+@login_required
+@require_POST
+def update_profile_cover_view(request):
+    form = ProfileCoverForm(request.POST, request.FILES)
+    if not form.is_valid():
+        for errors in form.errors.values():
+            for error in errors:
+                messages.error(request, error)
+        return redirect("/#profile-page")
+
+    user = request.user
+    previous_cover = user.profile_cover
+    user.profile_cover = form.cleaned_data["profile_cover"]
+    user.save(update_fields=["profile_cover"])
+    if previous_cover and previous_cover.name != user.profile_cover.name:
+        previous_cover.delete(save=False)
+    messages.success(request, "เปลี่ยนรูปปกโปรไฟล์เรียบร้อยแล้ว")
+    return redirect("/#profile-page")
+
+
+def delete_stored_files(files_to_delete):
+    for storage, name in files_to_delete:
+        storage.delete(name)
+
+
+@login_required
+@require_POST
+def delete_account_view(request):
+    user = request.user
+    if not user.check_password(request.POST.get("password", "")):
+        messages.error(request, "รหัสผ่านไม่ถูกต้อง จึงยังไม่ได้ลบบัญชี")
+        return redirect("/#profile-page")
+
+    files_to_delete = []
+    for image_field in (user.profile_image, user.profile_cover):
+        if image_field:
+            files_to_delete.append((image_field.storage, image_field.name))
+
+    with transaction.atomic():
+        owned_communities = Community.objects.filter(owner=user)
+        communities_to_delete = []
+        for community in owned_communities:
+            successor = (
+                CommunityMember.objects.filter(community=community)
+                .exclude(user=user)
+                .select_related("user")
+                .order_by("joined_at", "pk")
+                .first()
+            )
+            if successor:
+                community.owner = successor.user
+                community.save(update_fields=["owner"])
+            else:
+                communities_to_delete.append(community)
+                if community.image:
+                    files_to_delete.append(
+                        (community.image.storage, community.image.name)
+                    )
+
+        posts_to_delete = Post.objects.filter(user=user) | Post.objects.filter(
+            community__in=communities_to_delete
+        )
+        for post in posts_to_delete.distinct().only("image", "video"):
+            for media_field in (post.image, post.video):
+                if media_field:
+                    files_to_delete.append((media_field.storage, media_field.name))
+
+        user.delete()
+        transaction.on_commit(lambda: delete_stored_files(files_to_delete))
+
+    logout(request)
+    messages.success(request, "ลบบัญชีของคุณเรียบร้อยแล้ว")
+    return redirect("home")
+
 
 @login_required
 @require_POST
