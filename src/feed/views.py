@@ -11,6 +11,7 @@ def home_view(request):
         "like_set",
     ).order_by("-created_at")
     
+    # 1. คัดกรองโพสต์ตามสิทธิ์การมองเห็น
     if request.user.is_authenticated:
         posts = posts.filter(
             Q(community__isnull=True)
@@ -29,7 +30,7 @@ def home_view(request):
     if query:
         search_term = query.removeprefix("#").strip()
         
-        # ค้นหาโพสต์จาก: เนื้อหาโพสต์ | ชื่อจริงผู้โพสต์ | username ผู้โพสต์ | ชื่อ Community
+        # ค้นหาโพสต์: เนื้อหา | ชื่อผู้ใช้ | username | ชื่อกลุ่ม
         posts = posts.filter(
             Q(content__icontains=search_term)
             | Q(user__full_name__icontains=search_term)
@@ -37,7 +38,7 @@ def home_view(request):
             | Q(community__name__icontains=search_term)
         ).distinct()
 
-        # ค้นหา Community ตามชื่อหรือรายละเอียด เพื่อนำไปแสดงในผลการค้นหาเพิ่มเติม
+        # ค้นหากลุ่ม (Community) โดยตรง
         searched_communities = Community.objects.filter(
             Q(name__icontains=search_term) | Q(description__icontains=search_term)
         )
@@ -94,7 +95,7 @@ def home_view(request):
             "liked_post_ids": liked_post_ids,
             "saved_post_ids": saved_post_ids,
             "search_query": query,
-            "searched_communities": searched_communities,
+            "searched_communities": searched_communities, # ส่งข้อมูลกลุ่มที่ค้นหาเจอไปยัง Template
             "saved_only": saved_only,
             "communities": communities.order_by("name"),
             "joined_communities": (
