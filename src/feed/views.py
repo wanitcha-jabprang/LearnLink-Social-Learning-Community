@@ -11,7 +11,7 @@ def home_view(request):
         "like_set",
     ).order_by("-created_at")
     
-    # 1. คัดกรองโพสต์ตามสิทธิ์การมองเห็น
+    # คัดกรองโพสต์ตามสิทธิ์การมองเห็น
     if request.user.is_authenticated:
         posts = posts.filter(
             Q(community__isnull=True)
@@ -95,7 +95,7 @@ def home_view(request):
             "liked_post_ids": liked_post_ids,
             "saved_post_ids": saved_post_ids,
             "search_query": query,
-            "searched_communities": searched_communities, # ส่งข้อมูลกลุ่มที่ค้นหาเจอไปยัง Template
+            "searched_communities": searched_communities,
             "saved_only": saved_only,
             "communities": communities.order_by("name"),
             "joined_communities": (
