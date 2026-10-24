@@ -10,17 +10,13 @@ services:
       MYSQL_DATABASE: learnlink
       MYSQL_USER: learnlink
       MYSQL_PASSWORD: learnlink123
-      MYSQL_ROOT_PASSWORD: root123
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
 
     ports:
-<<<<<<< Updated upstream
-      - "3308:3306"
-=======
       - "3307:3306"
->>>>>>> Stashed changes
-
     volumes:
       - mysql_data:/var/lib/mysql
+
 
   web:
     build: .
