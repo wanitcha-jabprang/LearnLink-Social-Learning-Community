@@ -1,4 +1,5 @@
 (() => {
+    const siteMessages = document.querySelector(".site-messages");
     const imageInput = document.querySelector("[data-image-input]");
     const imagePreview = document.querySelector("[data-image-preview]");
     const profileImageInput = document.querySelector("[data-profile-image-input]");
@@ -28,6 +29,10 @@
     const clearPreviewUrl = (url) => {
         if (url) URL.revokeObjectURL(url);
     };
+
+    if (siteMessages) {
+        window.setTimeout(() => siteMessages.remove(), 3000);
+    }
 
     profileCoverInput?.addEventListener("change", () => {
         const file = profileCoverInput.files?.[0];
