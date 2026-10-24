@@ -55,6 +55,8 @@
                     {% csrf_token %}
                     <label for="signup-name">ชื่อที่แสดง</label>
                     <input id="signup-name" name="full_name" type="text" placeholder="ชื่อของคุณ" autocomplete="name" maxlength="100" required>
+                    <label for="signup-username">ชื่อผู้ใช้</label>
+                    <input id="signup-username" name="username" type="text" placeholder="ตั้งชื่อผู้ใช้ของคุณ" autocomplete="username" maxlength="150" required>
                     <label for="signup-email">อีเมล</label>
                     <input id="signup-email" name="email" type="email" placeholder="you@example.com" autocomplete="email" required>
                     <label for="signup-password">ตั้งรหัสผ่าน</label>
@@ -78,14 +80,14 @@
             <a href="#communities-page"><span class="material-symbols-rounded">groups</span><span>ชุมชน</span></a>
         </nav>
         <form class="search" action="{% url 'home' %}#home-page" method="get" role="search" data-search-form><span class="material-symbols-rounded search-icon">search</span><input type="search" name="q" value="{{ search_query }}" placeholder="Search communities, topics..." aria-label="Search communities and topics" data-search-input><button type="submit" class="visually-hidden">ค้นหา</button></form>
-        <div class="topbar-actions"><button class="icon-button notification-button" type="button" aria-label="การแจ้งเตือน"><span class="material-symbols-rounded">notifications</span><span class="notification-dot"></span></button><a class="profile-chip" href="#profile-page" aria-label="โปรไฟล์ {{ request.user.full_name|default:request.user.username }}"><span class="avatar-small">{{ request.user.full_name|default:request.user.username|slice:":1"|upper }}</span><span class="profile-name">{{ request.user.full_name|default:request.user.username }}</span></a></div>
+        <div class="topbar-actions"><button class="icon-button notification-button" type="button" aria-label="การแจ้งเตือน"><span class="material-symbols-rounded">notifications</span><span class="notification-dot"></span></button><a class="profile-chip" href="#profile-page" aria-label="โปรไฟล์ {{ request.user.full_name|default:request.user.username }}">{% if request.user.profile_image %}<span class="avatar-small"><img src="{{ request.user.profile_image.url }}" alt=""></span>{% else %}<span class="avatar-small">{{ request.user.full_name|default:request.user.username|slice:":1"|upper }}</span>{% endif %}<span class="profile-name">{{ request.user.full_name|default:request.user.username }}</span></a></div>
     </header>
     <div class="app-layout prototype-layout">
         <aside class="sidebar left-sidebar" aria-label="เมนูหลัก">
             <div class="sidebar-section">
                 <a class="sidebar-profile-card" href="#profile-page">
                     <span class="sidebar-cover-art"></span>
-                    <span class="avatar sidebar-profile-avatar">ม</span>
+                    <span class="avatar sidebar-profile-avatar">{% if request.user.profile_image %}<img src="{{ request.user.profile_image.url }}" alt="">{% else %}{{ request.user.full_name|default:request.user.username|slice:":1"|upper }}{% endif %}</span>
                     <span class="sidebar-profile-name">{{ request.user.full_name|default:request.user.username }}</span>
                     <span class="sidebar-profile-handle">@{{ request.user.username }} · ผู้เรียน</span>
                     <span class="sidebar-profile-stats"><span><strong>{{ profile_posts|length|stringformat:"02d" }}</strong> โพสต์</span><span><strong>{{ request.user.followers.count }}</strong> ผู้ติดตาม</span></span>
@@ -108,7 +110,7 @@
                 <form class="card composer" id="write-post" action="{% url 'create_post' %}" method="post" enctype="multipart/form-data" data-composer>
                     {% csrf_token %}
                     <input type="hidden" name="_html" value="1"><input type="hidden" name="next" value="/#home-page">
-                    <div class="composer-top"><span class="avatar">{{ request.user.full_name|default:request.user.username|slice:":1"|upper }}</span><textarea class="composer-input" name="content" rows="2" placeholder="วันนี้คุณได้เรียนรู้อะไรใหม่ ๆ บ้าง?" aria-label="เขียนสิ่งที่อยากแบ่งปัน" data-composer-input required></textarea></div>
+                    <div class="composer-top"><span class="avatar">{% if request.user.profile_image %}<img src="{{ request.user.profile_image.url }}" alt="">{% else %}{{ request.user.full_name|default:request.user.username|slice:":1"|upper }}{% endif %}</span><textarea class="composer-input" name="content" rows="2" placeholder="วันนี้คุณได้เรียนรู้อะไรใหม่ ๆ บ้าง?" aria-label="เขียนสิ่งที่อยากแบ่งปัน" data-composer-input required></textarea></div>
                     <div class="composer-bottom"><div class="composer-options">
                         <label class="composer-option" for="post-image">▧ รูปภาพ</label><input class="file-input-hidden" id="post-image" name="image" type="file" accept="image/*" data-image-input>
                         <label class="composer-option" for="post-video">▶ วิดีโอสั้น</label><input class="file-input-hidden" id="post-video" name="video" type="file" accept="video/*" data-video-input>
@@ -132,12 +134,61 @@
 
             <section class="prototype-page profile-page" id="profile-page">
                 <section class="card profile-cover">
-                    <div class="profile-cover-art"><label class="cover-upload" for="cover-upload">▧ เปลี่ยนภาพปก</label></div>
-                    <div class="profile-identity"><span class="avatar profile-large">{{ request.user.full_name|default:request.user.username|slice:":1"|upper }}</span><div><h1>{{ request.user.full_name|default:request.user.username }}</h1><p>@{{ request.user.username }} · สมาชิกตั้งแต่ {{ request.user.created_at|date:"M Y" }}</p></div><a class="button-secondary profile-edit" href="#profile-edit">แก้ไขโปรไฟล์</a><form class="profile-logout-form" action="{% url 'logout' %}" method="post">{% csrf_token %}<button class="button-secondary profile-logout" type="submit">ออกจากระบบ</button></form></div>
+                    <div class="profile-cover-art">
+                        {% if request.user.profile_cover %}
+                            <img class="profile-cover-image" src="{{ request.user.profile_cover.url }}" alt="รูปปกโปรไฟล์" data-profile-cover-preview>
+                        {% else %}
+                            <img class="profile-cover-image" alt="ตัวอย่างรูปปกโปรไฟล์" data-profile-cover-preview hidden>
+                        {% endif %}
+                        <form class="cover-upload-form" action="{% url 'update_profile_cover' %}" method="post" enctype="multipart/form-data">
+                            {% csrf_token %}
+                            <label class="cover-upload" for="cover-upload">▧ แก้ไขภาพปก</label>
+                            <input class="file-input-hidden" id="cover-upload" name="profile_cover" type="file" accept="image/*" data-profile-cover-input required>
+                            <button class="cover-save button-secondary" type="submit" data-profile-cover-save hidden>บันทึก</button>
+                            <span class="cover-upload-status" data-profile-cover-status role="status" aria-live="polite"></span>
+                        </form>
+                    </div>
+                    <div class="profile-identity">
+                        <span class="avatar profile-large">{% if request.user.profile_image %}<img src="{{ request.user.profile_image.url }}" alt="">{% else %}{{ request.user.full_name|default:request.user.username|slice:":1"|upper }}{% endif %}</span>
+                        <div>
+                            <h1>{{ request.user.full_name|default:request.user.username }}</h1>
+                            <p>@{{ request.user.username }} · สมาชิกตั้งแต่ {{ request.user.created_at|date:"M Y" }}</p>
+                        </div>
+                        <div class="profile-account-actions">
+                            <a class="button-secondary profile-edit" href="#profile-edit">แก้ไขโปรไฟล์</a>
+                            <form class="profile-logout-form" action="{% url 'logout' %}" method="post">{% csrf_token %}<button class="button-secondary profile-logout" type="submit">ออกจากระบบ</button></form>
+                            <details class="account-delete-confirm">
+                                <summary class="button-danger account-delete-trigger">ลบบัญชี</summary>
+                                <form action="{% url 'delete_account' %}" method="post">
+                                    {% csrf_token %}
+                                    <p>การลบบัญชีจะนำโพสต์และข้อมูลส่วนตัวออก ชุมชนที่ไม่มีสมาชิกคนอื่นจะถูกลบ ส่วนชุมชนที่ยังมีสมาชิกจะโอนเจ้าของให้สมาชิกเดิมที่เข้าร่วมก่อน</p>
+                                    <p>การดำเนินการนี้ย้อนกลับไม่ได้ กรุณายืนยันด้วยรหัสผ่านบัญชี</p>
+                                    <label for="delete-account-password">รหัสผ่าน</label>
+                                    <input id="delete-account-password" name="password" type="password" autocomplete="current-password" required>
+                                    <button class="button-danger" type="submit">ยืนยันการลบบัญชีถาวร</button>
+                                </form>
+                            </details>
+                        </div>
+                    </div>
                     <p class="profile-bio">{{ request.user.bio|default:"กำลังเรียนรู้และแบ่งปันความรู้ไปพร้อมกับชุมชน LearnLink 🌱" }}</p>
                     <div class="profile-stats"><span><strong>{{ profile_posts|length|stringformat:"02d" }}</strong> โพสต์</span><span><strong>{{ request.user.followers.count }}</strong> ผู้ติดตาม</span><span><strong>{{ request.user.following.count }}</strong> กำลังติดตาม</span></div>
                 </section>
-                <input class="file-input-hidden" id="cover-upload" type="file" accept="image/*" aria-label="เลือกรูปภาพปก">
+                <section class="card profile-community-bar" aria-labelledby="profile-communities-title">
+                    <div class="profile-community-heading">
+                        <h2 id="profile-communities-title">Community ที่เราอยู่</h2>
+                        <span>{{ joined_communities|length }} แห่ง</span>
+                    </div>
+                    <div class="profile-community-list">
+                        {% for community in joined_communities %}
+                            <a class="profile-community-chip" href="#community-{{ community.pk }}">
+                                <span class="joined-community-mark">{{ community.name|slice:":2" }}</span>
+                                <span>{{ community.name }}</span>
+                            </a>
+                        {% empty %}
+                            <p class="profile-community-empty">ยังไม่ได้เข้าร่วม Community ใด</p>
+                        {% endfor %}
+                    </div>
+                </section>
                 <div class="section-heading"><div><h2>โพสต์ของ {{ request.user.full_name|default:request.user.username }}</h2><p>สิ่งที่ฉันกำลังเรียนรู้และแบ่งปัน</p></div></div>
                 <div class="feed-list" data-profile-post-list data-server-rendered="true">
                     {% for post in profile_posts %}{% include "includes/post_card.html" with post=post return_anchor="profile-page" %}{% empty %}
@@ -153,22 +204,38 @@
     <h2>แก้ไขโปรไฟล์</h2>
 
     <div class="profile-image-edit">
-        {% if request.user.profile_image %}
-            <img class="avatar profile-large"
-                 src="{{ request.user.profile_image.url }}"
-                 alt="รูปโปรไฟล์ปัจจุบัน">
-        {% else %}
-            <span class="avatar profile-large">
-                {{ request.user.full_name|default:request.user.username|slice:":1"|upper }}
-            </span>
-        {% endif %}
+        <span class="avatar profile-large">
+            {% if request.user.profile_image %}
+                <img src="{{ request.user.profile_image.url }}" alt="รูปโปรไฟล์ปัจจุบัน" data-profile-image-preview>
+            {% else %}
+                <img alt="ตัวอย่างรูปโปรไฟล์" data-profile-image-preview hidden>
+                <span data-profile-image-fallback>{{ request.user.full_name|default:request.user.username|slice:":1"|upper }}</span>
+            {% endif %}
+        </span>
 
         <label class="button-secondary file-picker"
                for="avatar-upload">เลือกรูปโปรไฟล์</label>
 
         <input class="file-input-hidden" id="avatar-upload"
-               name="profile_image" type="file" accept="image/*">
+               name="profile_image" type="file" accept="image/jpeg,image/png,image/webp" data-profile-image-input>
     </div>
+    <div class="profile-cropper" data-profile-cropper>
+        <p class="profile-cropper-status" data-profile-cropper-status role="status" aria-live="polite">
+            {% if request.user.profile_image %}จัดตำแหน่งรูปได้เลย หรือเลือกรูปใหม่{% else %}เลือกรูปโปรไฟล์เพื่อเริ่มคร็อป{% endif %}
+        </p>
+        <p class="profile-cropper-help">ลากรูปเพื่อจัดตำแหน่ง แล้วปรับซูมให้ได้รูปที่ต้องการ</p>
+        <canvas class="profile-crop-canvas" width="240" height="240"
+                data-profile-crop-canvas tabindex="0" role="img"
+                aria-label="ลากเพื่อจัดตำแหน่งรูปโปรไฟล์"></canvas>
+        <label class="profile-zoom-label" for="profile-image-zoom">ซูมรูป</label>
+        <input id="profile-image-zoom" class="profile-zoom" type="range"
+               min="1" max="3" step="0.01" value="1" data-profile-image-zoom>
+        <div class="profile-zoom-range"><span>ย่อ</span><span>ขยาย</span></div>
+    </div>
+
+    <label for="profile-username">ชื่อผู้ใช้</label>
+    <input id="profile-username" type="text" name="username"
+           value="{{ request.user.username }}" maxlength="150" autocomplete="username" required>
 
     <label for="profile-full-name">ชื่อที่แสดง</label>
     <input id="profile-full-name" type="text" name="full_name"
@@ -182,7 +249,6 @@
         บันทึกโปรไฟล์
     </button>
 </form>
-
             </section>
 
             {% include "includes/community_hub.html" %}
@@ -235,7 +301,11 @@
                     {% for suggested_user in suggested_users %}
                         <div class="suggested-learner">
                             <span class="avatar-small learner-avatar">
-                                {{ suggested_user.full_name|default:suggested_user.username|slice:":1"|upper }}
+                                {% if suggested_user.profile_image %}
+                                    <img src="{{ suggested_user.profile_image.url }}" alt="">
+                                {% else %}
+                                    {{ suggested_user.full_name|default:suggested_user.username|slice:":1"|upper }}
+                                {% endif %}
                             </span>
 
                             <span>
@@ -267,5 +337,5 @@
     </div>
 </div>
 {% endif %}
-<script src="{% static 'js/app.js' %}" defer></script>
+<script src="{% static 'js/app.js' %}?v=20261023-profile-communities" defer></script>
 {% endblock %}

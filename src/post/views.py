@@ -101,17 +101,28 @@ def _validate_video(video):
     return None
 
 
+
 def _can_access_post(request, post):
-    community = post.community
-    if community is None or not community.is_private:
+    # ผู้ใช้ต้องเข้าสู่ระบบก่อน
+    if not request.user.is_authenticated:
+        return False
+
+    # โพสต์สาธารณะ: ไม่มีการผูกกับกลุ่ม
+    if post.community_id is None:
         return True
+
+    community = post.community
+
+    # เจ้าของกลุ่มเข้าถึงโพสต์ในกลุ่มได้
     if community.owner_id == request.user.pk:
         return True
+
+    # โพสต์ในกลุ่ม: ต้องเป็นสมาชิกกลุ่มเท่านั้น
     from community.models import CommunityMember
 
     return CommunityMember.objects.filter(
-        community=community,
-        user=request.user,
+        community_id=post.community_id,
+        user_id=request.user.pk,
     ).exists()
 
 
