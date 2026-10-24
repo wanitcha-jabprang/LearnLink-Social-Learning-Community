@@ -136,13 +136,6 @@ def home_view(request):
 def explore_view(request):
     # ใช้หน้าเดียวกับ Home เพื่อให้ URL /explore/ ทำงานได้
     return home_view(request)
-=======
-from django.db.models import Q
-from django.shortcuts import render
-
-from community.models import Community, CommunityMember
-from post.models import Bookmark, Like, Post
-
 
 def home_view(request):
     posts = Post.objects.select_related("user", "community").prefetch_related(
