@@ -5,13 +5,15 @@ from django.contrib.auth.password_validation import validate_password
 from django.db import transaction
 from django.core.exceptions import ValidationError
 from django.core.validators import validate_email
-from django.shortcuts import get_object_or_404, redirect
+from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
 from community.models import Community, CommunityMember
 from post.models import Post
 from .forms import ProfileCoverForm, UserProfileForm
 from .models import Follow, User
+from post.models import Post
+from django.db.models import Q
 
 def login_view(request):
     if request.method != "POST":
@@ -81,6 +83,47 @@ def profile_view(request):
     if request.user.is_authenticated:
         return redirect("/#profile-page")
     return redirect("home")
+@login_required
+def user_profile_view(request, user_id):
+
+    # ค้นหาผู้ใช้เจ้าของโปรไฟล์
+    profile_user = get_object_or_404(User, pk=user_id)
+
+    # ถ้าเป็นโปรไฟล์ตัวเอง ให้กลับไปหน้าโปรไฟล์เดิม
+    if profile_user.pk == request.user.pk:
+        return redirect("/#profile-page")
+
+    # ดึงโพสต์ที่ผู้เข้าชมมีสิทธิ์ดู
+    user_posts = (
+        Post.objects.filter(user=profile_user)
+        .filter(
+            Q(community__isnull=True)
+            | Q(community__is_private=False)
+            | Q(community__communitymember__user=request.user)
+            | Q(community__owner=request.user)
+        )
+        .select_related("user", "community")
+        .prefetch_related("comment_set__user", "like_set")
+        .distinct()
+        .order_by("-created_at")
+    )
+
+    # ตรวจสอบว่าติดตามผู้ใช้นี้อยู่หรือไม่
+    is_following = Follow.objects.filter(
+        follower=request.user,
+        following=profile_user
+    ).exists()
+
+    context = {
+        "profile_user": profile_user,
+        "user_posts": user_posts,
+        "is_following": is_following,
+        "followers_count": profile_user.followers.count(),
+        "following_count": profile_user.following.count(),
+        "posts_count": user_posts.count(),
+    }
+
+    return render(request, "users/user_profile.html", context)
 
 
 @require_POST
@@ -189,17 +232,30 @@ def delete_account_view(request):
 def follow_view(request, user_id):
     target_user = get_object_or_404(User, pk=user_id)
 
-    if target_user == request.user:
+    # ป้องกันการติดตามตัวเอง
+    if target_user.pk == request.user.pk:
         messages.error(request, "ไม่สามารถติดตามตัวเองได้")
-        return redirect("home")
+        return redirect("profile")
 
-    Follow.objects.get_or_create(
+    # ป้องกันการติดตามซ้ำ
+    follow, created = Follow.objects.get_or_create(
         follower=request.user,
         following=target_user,
     )
 
-    messages.success(request, f"ติดตาม {target_user.username} เรียบร้อยแล้ว")
-    return redirect("home")
+    if created:
+        messages.success(
+            request,
+            f"ติดตาม {target_user.username} เรียบร้อยแล้ว"
+        )
+    else:
+        messages.info(
+            request,
+            f"คุณกำลังติดตาม {target_user.username} อยู่แล้ว"
+        )
+
+    # กลับไปยังหน้าโปรไฟล์เจ้าของโพสต์
+    return redirect("user_profile", user_id=target_user.pk)
 
 
 @login_required
@@ -207,10 +263,27 @@ def follow_view(request, user_id):
 def unfollow_view(request, user_id):
     target_user = get_object_or_404(User, pk=user_id)
 
-    Follow.objects.filter(
+    # ป้องกันการเลิกติดตามตัวเอง
+    if target_user.pk == request.user.pk:
+        messages.error(request, "ไม่สามารถเลิกติดตามตัวเองได้")
+        return redirect("profile")
+
+    # ลบความสัมพันธ์การติดตาม
+    deleted_count, _ = Follow.objects.filter(
         follower=request.user,
         following=target_user,
     ).delete()
 
-    messages.success(request, f"เลิกติดตาม {target_user.username} แล้ว")
-    return redirect("home")
+    if deleted_count:
+        messages.success(
+            request,
+            f"เลิกติดตาม {target_user.username} แล้ว"
+        )
+    else:
+        messages.info(
+            request,
+            f"คุณไม่ได้ติดตาม {target_user.username}"
+        )
+
+    # กลับไปยังหน้าโปรไฟล์เดิม
+    return redirect("user_profile", user_id=target_user.pk)
