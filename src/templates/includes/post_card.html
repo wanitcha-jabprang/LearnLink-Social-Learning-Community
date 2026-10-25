@@ -1,9 +1,32 @@
 <article class="card post-card" data-post-card data-server-post-id="{{ post.pk }}" data-post-key="server-{{ post.pk }}">
     <header class="post-header">
-        <span class="avatar">{% if post.user.profile_image %}<img src="{{ post.user.profile_image.url }}" alt="">{% else %}{{ post.user.full_name|default:post.user.username|slice:":1"|upper }}{% endif %}</span>
+
+        <!-- รูปโปรไฟล์เจ้าของโพสต์ กดเข้าโปรไฟล์ได้ -->
+        <a href="{% url 'user_profile' post.user_id %}"
+           class="avatar"
+           aria-label="ดูโปรไฟล์ของ {{ post.user.username }}"
+           style="text-decoration: none; cursor: pointer;">
+            {% if post.user.profile_image %}
+                <img src="{{ post.user.profile_image.url }}" alt="">
+            {% else %}
+                {{ post.user.full_name|default:post.user.username|slice:":1"|upper }}
+            {% endif %}
+        </a>
+
+        <!-- ชื่อและข้อมูลเจ้าของโพสต์ -->
+
         <div class="post-author">
-            <strong>{{ post.user.full_name|default:post.user.username }}</strong>
-            <span class="post-meta">{{ post.created_at|date:"j M Y · H:i" }}{% if post.community %} · {{ post.community.name }}{% endif %}</span>
+            <a href="{% url 'user_profile' post.user_id %}"
+               style="text-decoration: none; color: inherit; cursor: pointer;">
+                <strong>{{ post.user.full_name|default:post.user.username }}</strong>
+            </a>
+
+            <span class="post-meta">
+                {{ post.created_at|date:"j M Y · H:i" }}
+                {% if post.community %}
+                    · {{ post.community.name }}
+                {% endif %}
+            </span>
         </div>
         {% if request.user.pk == post.user_id %}
         <div class="post-owner-actions" data-post-owner-actions>
