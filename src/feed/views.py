@@ -18,15 +18,11 @@ def home_view(request):
     if request.user.is_authenticated:
         posts = posts.filter(
             Q(community__isnull=True)
-            | Q(community__is_private=False)
             | Q(community__communitymember__user=request.user)
             | Q(community__owner=request.user)
         ).distinct()
     else:
-        posts = posts.filter(
-            Q(community__isnull=True)
-            | Q(community__is_private=False)
-        )
+        posts = posts.filter(community__isnull=True)
 
     # 3. ค้นหาโพสต์
     query = request.GET.get("q", "").strip()
@@ -147,14 +143,11 @@ def home_view(request):
     if request.user.is_authenticated:
         posts = posts.filter(
             Q(community__isnull=True)
-            | Q(community__is_private=False)
             | Q(community__communitymember__user=request.user)
             | Q(community__owner=request.user)
         ).distinct()
     else:
-        posts = posts.filter(
-            Q(community__isnull=True) | Q(community__is_private=False)
-        )
+        posts = posts.filter(community__isnull=True)
         
     query = request.GET.get("q", "").strip()
     searched_communities = Community.objects.none()

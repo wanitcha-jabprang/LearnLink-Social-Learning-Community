@@ -106,3 +106,25 @@ class CommunityWorkflowTests(TestCase):
             self.client.post(reverse("create_comment", args=[private_post.pk]), {"content": "แอบอ่าน"}).status_code,
             404,
         )
+
+    def test_community_posts_are_only_shown_to_members_in_feed(self):
+        community = Community.objects.create(
+            name="ชุมชนสาธารณะ",
+            description="โพสต์สำหรับสมาชิก",
+            invite_code="PUBLIC22",
+            owner=self.owner,
+        )
+        post = Post.objects.create(
+            user=self.owner,
+            community=community,
+            content="โพสต์ในกลุ่มที่ยังไม่ได้เข้าร่วม",
+        )
+        feed_url = reverse("home")
+
+        self.assertNotContains(self.client.get(feed_url), post.content)
+
+        self.client.force_login(self.member)
+        self.assertNotContains(self.client.get(feed_url), post.content)
+
+        self.client.post(reverse("join_community", args=[community.pk]))
+        self.assertContains(self.client.get(feed_url), post.content)
