@@ -4,6 +4,8 @@ from common.abstracts import TimestampedModel
 
 
 class User(AbstractUser, TimestampedModel):
+    first_name = None
+    last_name = None
     full_name = models.CharField(max_length=100)
     bio = models.TextField(blank=True)
     profile_image = models.ImageField(
