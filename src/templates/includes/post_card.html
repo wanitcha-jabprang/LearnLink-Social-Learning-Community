@@ -1,21 +1,104 @@
-<article class="card post-card">
+<article class="card post-card" data-post-card data-server-post-id="{{ post.pk }}" data-post-key="server-{{ post.pk }}">
     <header class="post-header">
-        <span class="avatar">{{ post.author_name|default:"ม"|slice:":1"|upper }}</span>
+
+        <!-- รูปโปรไฟล์เจ้าของโพสต์ กดเข้าโปรไฟล์ได้ -->
+        <a href="{% url 'user_profile' post.user_id %}"
+           class="avatar"
+           aria-label="ดูโปรไฟล์ของ {{ post.user.username }}"
+           style="text-decoration: none; cursor: pointer;">
+            {% if post.user.profile_image %}
+                <img src="{{ post.user.profile_image.url }}" alt="">
+            {% else %}
+                {{ post.user.full_name|default:post.user.username|slice:":1"|upper }}
+            {% endif %}
+        </a>
+
+        <!-- ชื่อและข้อมูลเจ้าของโพสต์ -->
+
         <div class="post-author">
-            <strong>{{ post.author_name|default:"สมาชิก LearnLink" }}</strong>
-            <span class="post-meta">{% if post.created_at %}{{ post.created_at|date:"j M Y · H:i" }}{% else %}วันนี้ · 10:42{% endif %}{% if post.community_name %} · {{ post.community_name }}{% endif %}</span>
+            <a href="{% url 'user_profile' post.user_id %}"
+               style="text-decoration: none; color: inherit; cursor: pointer;">
+                <strong>{{ post.user.full_name|default:post.user.username }}</strong>
+            </a>
+
+            <span class="post-meta">
+                {{ post.created_at|date:"j M Y · H:i" }}
+                {% if post.community %}
+                    · {{ post.community.name }}
+                {% endif %}
+            </span>
         </div>
-        {% if post.is_mine %}<div class="post-owner-actions"><a class="post-menu" href="#edit-post" aria-label="แก้ไขโพสต์">✎</a><button class="post-menu" type="button" aria-label="ลบโพสต์">×</button></div>{% else %}<button class="post-menu" type="button" aria-label="ตัวเลือกโพสต์">···</button>{% endif %}
+        {% if request.user.pk == post.user_id %}
+        <div class="post-owner-actions" data-post-owner-actions>
+            <details class="post-edit-details">
+                <summary class="post-menu post-owner-action-button">แก้ไข</summary>
+                <form class="inline-edit-form" action="{% url 'edit_post' post.pk %}" method="post">
+                    {% csrf_token %}<input type="hidden" name="_html" value="1"><input type="hidden" name="next" value="{{ request.get_full_path }}#{{ return_anchor|default:'home-page' }}">
+                    <textarea class="inline-edit-input" name="content" rows="3" required>{{ post.content }}</textarea>
+                    <button class="button-primary" type="submit">บันทึก</button>
+                </form>
+            </details>
+            <form action="{% url 'delete_post' post.pk %}" method="post">
+                {% csrf_token %}<input type="hidden" name="_html" value="1"><input type="hidden" name="next" value="{{ request.get_full_path }}#{{ return_anchor|default:'home-page' }}">
+                <button class="post-menu post-owner-action-button post-delete-action" type="submit">ลบ</button>
+            </form>
+        </div>
+        {% else %}
+        <button class="post-menu" type="button" aria-label="ตัวเลือกโพสต์">···</button>
+        {% endif %}
     </header>
-    {% if post.topic %}<span class="post-community">#{{ post.topic }}</span>{% endif %}
-    <div class="post-content">{{ post.content|default:"วันนี้ลองทำโปรเจกต์เล็ก ๆ ด้วย Python แล้วได้เรียนรู้เรื่องการจัดการข้อมูลเยอะมาก ใครมีเทคนิคสำหรับมือใหม่ มาแบ่งปันกันได้นะครับ 🌱"|linebreaksbr }}</div>
-    {% if post.image_url %}<img class="post-image" src="{{ post.image_url }}" alt="ภาพประกอบโพสต์" loading="lazy">{% endif %}
-    <div class="post-stats"><span>{{ post.likes_count|default:12 }} ถูกใจ</span><a href="#comments">{{ post.comments_count|default:3 }} ความคิดเห็น</a></div>
-    <div class="post-actions">
-        <button class="post-action" type="button">♡ ถูกใจ</button>
-        <a class="post-action" href="#comments">▢ แสดงความคิดเห็น</a>
-        <button class="post-action" type="button">♧ บันทึก</button>
+    {% if post.community %}<span class="post-community">#{{ post.community.name }}</span>{% endif %}
+    <div class="post-content">{{ post.content|linebreaksbr }}</div>
+    {% if post.image %}<img class="post-image" src="{{ post.image.url }}" alt="ภาพประกอบโพสต์" loading="lazy">{% endif %}
+    {% if post.video %}<video class="post-video" src="{{ post.video.url }}" controls playsinline preload="metadata" aria-label="วิดีโอประกอบโพสต์"></video>{% endif %}
+    <div class="post-stats">
+        <span data-like-count>{{ post.like_set.count }} ถูกใจ</span>
+        <span data-comment-count>{{ post.comment_set.count }} ความคิดเห็น</span>
     </div>
-    <div class="comment-preview" id="comments"><span class="avatar-small">พ</span><p><strong>พลอย</strong> ขอบคุณที่แบ่งปันนะคะ มีประโยชน์มากเลย!</p><a class="comment-menu" href="#edit-comment" aria-label="แก้ไขความคิดเห็น">···</a></div>
-    <div class="comment-compose"><span class="avatar-small">L</span><span>เขียนความคิดเห็น...</span><span class="comment-send">➤</span></div>
+    <div class="post-actions">
+        <form action="{% url 'toggle_like' post.pk %}" method="post">
+            {% csrf_token %}<input type="hidden" name="_html" value="1"><input type="hidden" name="next" value="{{ request.get_full_path }}#{{ return_anchor|default:'home-page' }}">
+            <button class="post-action" type="submit" aria-pressed="{% if post.pk in liked_post_ids %}true{% else %}false{% endif %}">{% if post.pk in liked_post_ids %}♥ ถูกใจแล้ว{% else %}♡ ถูกใจ{% endif %}</button>
+        </form>
+        <a class="post-action" href="#comments-{{ post.pk }}">▢ แสดงความคิดเห็น</a>
+        <form action="{% url 'toggle_bookmark' post.pk %}" method="post">
+            {% csrf_token %}<input type="hidden" name="_html" value="1"><input type="hidden" name="next" value="{{ request.get_full_path }}#{{ return_anchor|default:'home-page' }}">
+            <button class="post-action" type="submit" aria-pressed="{% if post.pk in saved_post_ids %}true{% else %}false{% endif %}">{% if post.pk in saved_post_ids %}♧ บันทึกแล้ว{% else %}♧ บันทึก{% endif %}</button>
+        </form>
+    </div>
+    <section class="comment-area" id="comments-{{ post.pk }}">
+        <div class="comment-list">
+            {% for comment in post.comment_set.all %}
+            <div class="comment-item" data-server-comment-id="{{ comment.pk }}">
+                <div class="comment-item-body">
+                    <strong class="comment-author">{{ comment.user.full_name|default:comment.user.username }}</strong>
+                    <p class="comment-content">{{ comment.content }}</p>
+                </div>
+                {% if request.user.pk == comment.user_id %}
+                <div class="comment-owner-actions">
+                    <details>
+                        <summary class="comment-owner-action">แก้ไข</summary>
+                        <form class="inline-edit-form" action="{% url 'edit_comment' comment.pk %}" method="post">
+                            {% csrf_token %}<input type="hidden" name="_html" value="1"><input type="hidden" name="next" value="{{ request.get_full_path }}#comments-{{ post.pk }}">
+                            <textarea class="inline-edit-input" name="content" rows="2" required>{{ comment.content }}</textarea>
+                            <button class="button-primary" type="submit">บันทึก</button>
+                        </form>
+                    </details>
+                    <form action="{% url 'delete_comment' comment.pk %}" method="post">
+                        {% csrf_token %}<input type="hidden" name="_html" value="1"><input type="hidden" name="next" value="{{ request.get_full_path }}#comments-{{ post.pk }}">
+                        <button class="comment-owner-action comment-delete-action" type="submit">ลบ</button>
+                    </form>
+                </div>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+        {% if request.user.is_authenticated %}
+        <form class="comment-form" action="{% url 'create_comment' post.pk %}" method="post">
+            {% csrf_token %}<input type="hidden" name="_html" value="1"><input type="hidden" name="next" value="{{ request.get_full_path }}#comments-{{ post.pk }}">
+            <input class="comment-input" name="content" type="text" placeholder="เขียนความคิดเห็น..." aria-label="เขียนความคิดเห็น" required>
+            <button class="comment-submit" type="submit">ส่ง</button>
+        </form>
+        {% endif %}
+    </section>
 </article>

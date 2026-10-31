@@ -11,10 +11,10 @@ services:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
 
     ports:
-      - "3306:3306"
-
+      - "3307:3306"
     volumes:
       - mysql_data:/var/lib/mysql
+
 
   web:
     build: .

@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <title>แก้ไขโปรไฟล์</title>
+</head>
+<body>
+    <div style="width: 500px; margin: 50px auto; font-family: sans-serif;">
+        <h2>แก้ไขข้อมูลส่วนตัว</h2>
+        
+        <!-- **จุดสำคัญ:** ต้องมี enctype="multipart/form-data" เพื่อให้อัปโหลดรูปภาพได้ -->
+        <form method="POST" enctype="multipart/form-data">
+            {% csrf_token %}
+            
+            {{ form.as_p }}
+            
+            <button type="submit" style="padding: 10px 20px; background-color: #4CAF50; color: white; border: none; cursor: pointer;">
+                บันทึกการเปลี่ยนแปลง
+            </button>
+        </form>
+        
+        <br>
+        <a href="{% url 'profile' %}">← กลับหน้าโปรไฟล์</a>
+    </div>
+</body>
+</html>

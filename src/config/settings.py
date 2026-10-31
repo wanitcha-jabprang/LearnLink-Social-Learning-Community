@@ -29,7 +29,7 @@ SECRET_KEY = os.getenv("SECRET_KEY")
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv("DEBUG") == "True"
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['localhost', '127.0.0.1']
 
 
 # Application definition
@@ -96,10 +96,9 @@ DATABASES = {
 
         "PASSWORD": os.getenv("DB_PASSWORD"),
 
-        "HOST": os.getenv("DB_HOST"),
+        "HOST": os.getenv("DB_HOST") or "localhost",  # ถ้าเป็น None จะบังคับใช้ 'localhost' แทนทันที
 
-        "PORT": os.getenv("DB_PORT"),
-
+        "PORT": os.getenv("DB_PORT") or "3306",
     }
 
 }
@@ -148,6 +147,8 @@ STATICFILES_DIRS = [
 MEDIA_URL = "/media/"
 
 MEDIA_ROOT = BASE_DIR / "media"
+DATA_UPLOAD_MAX_MEMORY_SIZE = 120 * 1024 * 1024
+FILE_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024
 
 
 STATIC_ROOT = BASE_DIR / "staticfiles"
@@ -160,3 +161,6 @@ MAILERS = {
     },
 }
 AUTH_USER_MODEL = "users.User"
+
+MEDIA_URL = '/media/'
+MEDIA_ROOT = BASE_DIR / 'media'
