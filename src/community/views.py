@@ -44,7 +44,7 @@ def create_community(request):
 
     community = Community.objects.create(
         name=name,
-        description=description or "พื้นที่สำหรับแบ่งปันและเรียนรู้ไปด้วยกัน",
+        description=description,
         image=image,
         is_private=is_private,
         owner=request.user,
