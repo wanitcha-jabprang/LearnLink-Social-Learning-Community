@@ -4,9 +4,9 @@ from types import SimpleNamespace
 from django.test import TestCase
 from django.urls import reverse
 
-from post.models import Bookmark, Comment, Like, Post
-from post.views import MAX_VIDEO_SIZE, _validate_video
-from users.models import User
+from post.infrastructure.persistence.models import Bookmark, Comment, Like, Post
+from post.presentation.views import MAX_VIDEO_SIZE, _validate_video
+from users.infrastructure.persistence.models import User
 
 
 class PostApiTests(TestCase):

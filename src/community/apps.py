@@ -1,6 +1,6 @@
-from django.apps import AppConfig
+from common.apps import LayeredFeatureConfig
 
 
-class CommunityConfig(AppConfig):
+class CommunityConfig(LayeredFeatureConfig):
     default_auto_field = 'django.db.models.BigAutoField'
     name = 'community'

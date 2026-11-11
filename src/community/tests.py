@@ -1,9 +1,12 @@
+from unittest.mock import patch
+
 from django.test import TestCase
 from django.urls import reverse
 
-from community.models import Community, CommunityMember
-from post.models import Post
-from users.models import User
+from community.infrastructure.container import get_community_service
+from community.infrastructure.persistence.models import Community, CommunityMember
+from post.infrastructure.persistence.models import Post
+from users.infrastructure.persistence.models import User
 
 
 class CommunityWorkflowTests(TestCase):
@@ -61,6 +64,43 @@ class CommunityWorkflowTests(TestCase):
         self.assertTrue(CommunityMember.objects.filter(community=community, user=self.member).exists())
         self.client.post(reverse("leave_community", args=[community.pk]))
         self.assertFalse(CommunityMember.objects.filter(community=community, user=self.member).exists())
+
+    def test_join_private_community_with_none_invite_code_returns_validation_error(self):
+        community = Community.objects.create(
+            name="ชุมชนส่วนตัว",
+            description="",
+            invite_code="PRIVATE2",
+            is_private=True,
+            owner=self.owner,
+        )
+
+        with self.assertRaisesRegex(ValueError, "รหัสเชิญไม่ถูกต้อง"):
+            get_community_service().join(community.pk, self.member, None)
+
+    def test_update_saves_only_fields_that_were_updated(self):
+        community = Community.objects.create(
+            name="ชุมชนเดิม",
+            description="รายละเอียดเดิม",
+            invite_code="COMMUNITY",
+            owner=self.owner,
+        )
+        service = get_community_service()
+
+        with patch.object(service.communities, "save") as save:
+            service.update(
+                community.pk,
+                self.owner,
+                name="ชุมชนใหม่",
+                description="รายละเอียดใหม่",
+                image=None,
+                is_private=True,
+            )
+
+        save.assert_called_once()
+        self.assertEqual(
+            save.call_args.kwargs["fields"],
+            ["name", "description", "is_private"],
+        )
 
     def test_community_hub_is_rendered_from_database(self):
         community = Community.objects.create(

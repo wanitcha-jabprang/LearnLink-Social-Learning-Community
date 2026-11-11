@@ -25,10 +25,10 @@ from django.urls import path, include
 urlpatterns = [
     path("admin/", admin.site.urls),
 
-    path("", include("feed.urls")),
-    path("users/", include("users.urls")),
-    path("community/", include("community.urls")),
-    path("post/", include("post.urls")),
+    path("", include("feed.presentation.urls")),
+    path("users/", include("users.presentation.urls")),
+    path("community/", include("community.presentation.urls")),
+    path("post/", include("post.presentation.urls")),
 ]
 
 if settings.DEBUG:
@@ -36,4 +36,3 @@ if settings.DEBUG:
         settings.MEDIA_URL,
         document_root=settings.MEDIA_ROOT
     )
-
