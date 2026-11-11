@@ -1,8 +1,23 @@
 from django.db import models
+import uuid
+import os
 
 from common.abstracts import TimestampedModel
 from community.infrastructure.persistence.models import Community
 from users.infrastructure.persistence.models import User
+
+from .validators import (
+    validate_image_mime,
+    validate_video_mime,
+)
+
+
+def upload_post_file(instance, filename):
+    ext = filename.split(".")[-1]
+    return os.path.join(
+        "posts",
+        f"{uuid.uuid4()}.{ext}"
+    )
 
 
 class Post(TimestampedModel):
@@ -14,9 +29,19 @@ class Post(TimestampedModel):
 
     content = models.TextField()
 
-    image = models.ImageField(upload_to="posts/images/", blank=True, null=True)
+    image = models.ImageField(
+        upload_to=upload_post_file,
+        validators=[validate_image_mime],
+        blank=True,
+        null=True
+    )
 
-    video = models.FileField(upload_to="posts/videos/", blank=True, null=True)
+    video = models.FileField(
+        upload_to=upload_post_file,
+        validators=[validate_video_mime],
+        blank=True,
+        null=True
+    )
 
     def __str__(self):
         return self.content[:30]
