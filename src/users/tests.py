@@ -1,5 +1,6 @@
 import tempfile
 from io import BytesIO
+from unittest.mock import patch
 
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import override_settings
@@ -7,9 +8,14 @@ from django.test import TestCase
 from django.urls import reverse
 from PIL import Image
 
+from common.infrastructure.storage.upload_validation import (
+    MAX_IMAGE_SIZE,
+    validate_image,
+)
 from community.infrastructure.persistence.models import Community, CommunityMember
 from post.infrastructure.persistence.models import Post
 from users.infrastructure.persistence.models import User
+from users.presentation.forms import ProfileCoverForm, UserProfileForm
 
 
 class AuthenticationFlowTests(TestCase):
@@ -141,6 +147,61 @@ class AuthenticationFlowTests(TestCase):
                     self.client.get(reverse("home")),
                     user.profile_cover.url,
                 )
+
+    def test_profile_image_and_cover_validation_runs_on_server(self):
+        user = User.objects.create_user(
+            username="validateduser",
+            email="validated@example.com",
+            password="StrongPass123!",
+            full_name="ผู้เรียน",
+        )
+        image_file = BytesIO()
+        Image.new("RGB", (1, 1), color="blue").save(image_file, format="PNG")
+
+        with patch(
+            "users.presentation.forms.validate_image",
+            return_value="รูปภาพต้องมีขนาดไม่เกิน 10 MB",
+        ):
+            profile_form = UserProfileForm(
+                data={
+                    "username": user.username,
+                    "full_name": user.full_name,
+                    "bio": "",
+                },
+                files={
+                    "profile_image": SimpleUploadedFile(
+                        "profile.png",
+                        image_file.getvalue(),
+                        content_type="image/png",
+                    )
+                },
+                instance=user,
+            )
+            cover_form = ProfileCoverForm(
+                files={
+                    "profile_cover": SimpleUploadedFile(
+                        "cover.png",
+                        image_file.getvalue(),
+                        content_type="image/png",
+                    )
+                }
+            )
+            profile_valid = profile_form.is_valid()
+            cover_valid = cover_form.is_valid()
+
+        self.assertFalse(profile_valid)
+        self.assertIn("10 MB", str(profile_form.errors["profile_image"]))
+        self.assertFalse(cover_valid)
+        self.assertIn("10 MB", str(cover_form.errors["profile_cover"]))
+
+    def test_shared_image_validation_rejects_oversized_uploads(self):
+        class OversizedUpload:
+            size = MAX_IMAGE_SIZE + 1
+
+        self.assertEqual(
+            validate_image(OversizedUpload()),
+            "รูปภาพต้องมีขนาดไม่เกิน 10 MB",
+        )
 
     def test_profile_actions_and_cover_save_visibility(self):
         user = User.objects.create_user(

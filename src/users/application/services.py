@@ -5,20 +5,9 @@ from django.db import transaction
 from users.domain import policies
 
 
-class UserService:
-    def __init__(
-        self,
-        users,
-        follows,
-        profiles,
-        account_deletion,
-        file_storage,
-    ):
+class UserAccountService:
+    def __init__(self, users):
         self.users = users
-        self.follows = follows
-        self.profiles = profiles
-        self.account_deletion = account_deletion
-        self.file_storage = file_storage
 
     def login_username(self, identifier):
         identifier = identifier.strip()
@@ -65,8 +54,33 @@ class UserService:
     def username_exists_for_other_user(self, username, user_id):
         return self.users.username_exists_for_other_user(username, user_id)
 
-    def save_profile(self, user):
+
+class UserProfileService:
+    def __init__(self, users, profiles, file_storage):
+        self.users = users
+        self.profiles = profiles
+        self.file_storage = file_storage
+
+    def save(self, user):
         self.users.save(user)
+
+    def visible_posts(self, profile_user, viewer):
+        return self.profiles.visible_posts(profile_user, viewer)
+
+    def counts(self, profile_user, posts):
+        return self.profiles.profile_counts(profile_user, posts)
+
+    def update_cover(self, user, image):
+        previous = user.profile_cover
+        user.profile_cover = image
+        self.users.save(user, ["profile_cover"])
+        if previous and previous.name != user.profile_cover.name:
+            self.file_storage.delete([(previous.storage, previous.name)])
+
+
+class UserFollowService:
+    def __init__(self, follows):
+        self.follows = follows
 
     def follow(self, actor, target):
         policies.validate_follow(actor.pk, target.pk, action="ติดตาม")
@@ -80,11 +94,11 @@ class UserService:
     def is_following(self, actor, target):
         return self.follows.is_following(actor, target)
 
-    def visible_posts(self, profile_user, viewer):
-        return self.profiles.visible_posts(profile_user, viewer)
 
-    def profile_counts(self, profile_user, posts):
-        return self.profiles.profile_counts(profile_user, posts)
+class AccountDeletionService:
+    def __init__(self, account_deletion, file_storage):
+        self.account_deletion = account_deletion
+        self.file_storage = file_storage
 
     @staticmethod
     def password_matches(user, password):
@@ -103,10 +117,3 @@ class UserService:
         self.account_deletion.delete_communities(communities_to_delete)
         self.account_deletion.delete_user(user)
         transaction.on_commit(lambda: self.file_storage.delete(files))
-
-    def update_profile_cover(self, user, image):
-        previous = user.profile_cover
-        user.profile_cover = image
-        self.users.save(user, ["profile_cover"])
-        if previous and previous.name != user.profile_cover.name:
-            self.file_storage.delete([(previous.storage, previous.name)])

@@ -1,18 +1,37 @@
-from users.application.services import UserService
+from dataclasses import dataclass
+
+from users.application.services import (
+    AccountDeletionService,
+    UserAccountService,
+    UserFollowService,
+    UserProfileService,
+)
 from users.infrastructure.persistence.repositories import (
     AccountDeletionRepository,
     FollowRepository,
     UserProfileRepository,
     UserRepository,
 )
-from users.infrastructure.storage import files
+from users.infrastructure.storage.files import FileStorage
 
 
-def get_user_service():
-    return UserService(
-        UserRepository(),
-        FollowRepository(),
-        UserProfileRepository(),
-        AccountDeletionRepository(),
-        files,
+@dataclass(frozen=True)
+class UserServices:
+    accounts: UserAccountService
+    profiles: UserProfileService
+    follows: UserFollowService
+    account_deletion: AccountDeletionService
+
+
+def get_user_services():
+    users = UserRepository()
+    storage = FileStorage()
+    return UserServices(
+        accounts=UserAccountService(users),
+        profiles=UserProfileService(users, UserProfileRepository(), storage),
+        follows=UserFollowService(FollowRepository()),
+        account_deletion=AccountDeletionService(
+            AccountDeletionRepository(),
+            storage,
+        ),
     )

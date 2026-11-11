@@ -102,6 +102,22 @@ class CommunityWorkflowTests(TestCase):
             ["name", "description", "is_private"],
         )
 
+    def test_community_image_validation_runs_in_service(self):
+        service = get_community_service()
+        with patch.object(
+            service.image_validation,
+            "validate_image",
+            return_value="ไฟล์รูปภาพไม่ถูกต้อง",
+        ):
+            with self.assertRaisesRegex(ValueError, "ไฟล์รูปภาพไม่ถูกต้อง"):
+                service.create(
+                    name="ชุมชนใหม่",
+                    description="",
+                    image=object(),
+                    is_private=False,
+                    owner=self.owner,
+                )
+
     def test_community_hub_is_rendered_from_database(self):
         community = Community.objects.create(
             name="Python",
