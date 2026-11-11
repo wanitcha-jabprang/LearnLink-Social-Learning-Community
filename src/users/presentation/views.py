@@ -90,7 +90,7 @@ def edit_profile_view(request):
         )
         if form.is_valid():
             user = form.save(commit=False)
-            get_user_services().profiles.save(user)
+            get_user_services().profiles.save(user, form.changed_data)
             messages.success(request, "บันทึกโปรไฟล์เรียบร้อยแล้ว")
             return redirect("/#profile-page")
 

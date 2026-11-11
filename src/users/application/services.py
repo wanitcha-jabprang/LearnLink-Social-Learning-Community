@@ -59,8 +59,8 @@ class UserProfileService:
         self.profiles = profiles
         self.file_storage = file_storage
 
-    def save(self, user):
-        self.users.save(user)
+    def save(self, user, fields):
+        self.users.save(user, fields)
 
     def visible_posts(self, profile_user, viewer):
         return self.profiles.visible_posts(profile_user, viewer)

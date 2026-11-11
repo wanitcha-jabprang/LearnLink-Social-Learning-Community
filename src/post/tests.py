@@ -145,6 +145,16 @@ class PostApiTests(TestCase):
             "วิดีโอต้องมีขนาดไม่เกิน 100 MB",
         )
 
+    def test_video_validation_accepts_valid_upload(self):
+        video = SimpleNamespace(size=1024, content_type="video/mp4")
+
+        self.assertIsNone(validate_video(video))
+
+    def test_video_validation_rejects_non_video_content_type(self):
+        file = SimpleNamespace(size=1024, content_type="image/png")
+
+        self.assertEqual(validate_video(file), "กรุณาเลือกไฟล์วิดีโอ")
+
     def test_like_and_bookmark_toggles_are_persisted_per_user(self):
         self.client.force_login(self.author)
         like_url = reverse("toggle_like", args=[self.post.pk])

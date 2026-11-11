@@ -214,6 +214,29 @@ class AuthenticationFlowTests(TestCase):
         self.assertFalse(cover_valid)
         self.assertIn("10 MB", str(cover_form.errors["profile_cover"]))
 
+    def test_image_validation_rejects_corrupted_file(self):
+        image = SimpleUploadedFile(
+            "corrupted.png",
+            b"not a valid image",
+            content_type="image/png",
+        )
+
+        self.assertEqual(validate_image(image), "ไฟล์รูปภาพไม่ถูกต้อง")
+
+    def test_image_validation_accepts_valid_upload(self):
+        image_file = BytesIO()
+        Image.new("RGB", (1, 1), color="blue").save(
+            image_file,
+            format="PNG",
+        )
+        image = SimpleUploadedFile(
+            "valid.png",
+            image_file.getvalue(),
+            content_type="image/png",
+        )
+
+        self.assertIsNone(validate_image(image))
+
     def test_shared_image_validation_rejects_oversized_uploads(self):
         class OversizedUpload:
             size = MAX_IMAGE_SIZE + 1
