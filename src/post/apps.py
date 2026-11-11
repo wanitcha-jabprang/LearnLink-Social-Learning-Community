@@ -1,6 +1,6 @@
-from django.apps import AppConfig
+from common.apps import LayeredFeatureConfig
 
 
-class PostConfig(AppConfig):
-    default_auto_field = 'django.db.models.BigAutoField'
-    name = 'post'
+class PostConfig(LayeredFeatureConfig):
+    default_auto_field = "django.db.models.BigAutoField"
+    name = "post"

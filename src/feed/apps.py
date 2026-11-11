@@ -1,6 +1,6 @@
-from django.apps import AppConfig
+from common.apps import LayeredFeatureConfig
 
 
-class FeedConfig(AppConfig):
-    default_auto_field = 'django.db.models.BigAutoField'
-    name = 'feed'
+class FeedConfig(LayeredFeatureConfig):
+    default_auto_field = "django.db.models.BigAutoField"
+    name = "feed"

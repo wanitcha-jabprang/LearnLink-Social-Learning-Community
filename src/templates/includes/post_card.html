@@ -61,10 +61,6 @@
             <button class="post-action" type="submit" aria-pressed="{% if post.pk in liked_post_ids %}true{% else %}false{% endif %}">{% if post.pk in liked_post_ids %}♥ ถูกใจแล้ว{% else %}♡ ถูกใจ{% endif %}</button>
         </form>
         <a class="post-action" href="#comments-{{ post.pk }}">▢ แสดงความคิดเห็น</a>
-        <form action="{% url 'toggle_bookmark' post.pk %}" method="post">
-            {% csrf_token %}<input type="hidden" name="_html" value="1"><input type="hidden" name="next" value="{{ request.get_full_path }}#{{ return_anchor|default:'home-page' }}">
-            <button class="post-action" type="submit" aria-pressed="{% if post.pk in saved_post_ids %}true{% else %}false{% endif %}">{% if post.pk in saved_post_ids %}♧ บันทึกแล้ว{% else %}♧ บันทึก{% endif %}</button>
-        </form>
     </div>
     <section class="comment-area" id="comments-{{ post.pk }}">
         <div class="comment-list">

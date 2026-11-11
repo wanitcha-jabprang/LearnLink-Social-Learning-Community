@@ -1,6 +1,6 @@
-from django.apps import AppConfig
+from common.apps import LayeredFeatureConfig
 
 
-class UsersConfig(AppConfig):
+class UsersConfig(LayeredFeatureConfig):
     default_auto_field = "django.db.models.BigAutoField"
     name = "users"
