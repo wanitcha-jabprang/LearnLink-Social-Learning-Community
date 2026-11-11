@@ -7,7 +7,9 @@ from users.infrastructure.persistence.models import User
 class Community(TimestampedModel):
     name = models.CharField(max_length=100)
     description = models.TextField()
-    image = models.ImageField(upload_to="community_covers/", blank=True, null=True)
+    image = models.ImageField(
+        upload_to="community_covers/", blank=True, null=True
+    )
     invite_code = models.CharField(max_length=8, unique=True, blank=True)
     is_private = models.BooleanField(default=False)
     owner = models.ForeignKey(User, on_delete=models.CASCADE)

@@ -33,7 +33,9 @@ class CommunityService:
             raise LookupError("ไม่พบชุมชนนี้")
         return community
 
-    def update(self, community_id, actor, *, name, description, image, is_private):
+    def update(
+        self, community_id, actor, *, name, description, image, is_private
+    ):
         community = self.get(community_id)
         if not policies.is_owner(community.owner_id, actor.pk):
             raise PermissionError("คุณไม่มีสิทธิ์ในการแก้ไขชุมชนนี้")

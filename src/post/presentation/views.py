@@ -8,12 +8,6 @@ from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 
 from post.infrastructure.container import get_post_services
-from post.infrastructure.storage.upload_validation import (
-    MAX_IMAGE_SIZE,
-    MAX_VIDEO_SIZE,
-    validate_image as _validate_image,
-    validate_video as _validate_video,
-)
 
 
 def _request_data(request):
@@ -51,7 +45,9 @@ def _form_response(request, message, *, error=False):
 
 
 def _error_response(request, message, status=400):
-    return _form_response(request, message, error=True) or _error(message, status)
+    return _form_response(request, message, error=True) or _error(
+        message, status
+    )
 
 
 def _require_authentication(view):
@@ -66,7 +62,9 @@ def _require_authentication(view):
 
 def _service_error(request, error, *, permission_status=403):
     if isinstance(error, PermissionError):
-        status = 404 if str(error) == "คุณไม่มีสิทธิ์เข้าถึงโพสต์นี้" else permission_status
+        status = (
+            404 if str(error) == "คุณไม่มีสิทธิ์เข้าถึงโพสต์นี้" else permission_status
+        )
     elif isinstance(error, LookupError):
         status = 404
     else:
@@ -111,7 +109,9 @@ def edit_post(request, post_id):
         return _error_response(request, "ข้อมูลที่ส่งมาไม่ถูกต้อง")
     services = get_post_services()
     try:
-        post = services.posts.edit(post_id, request.user, data.get("content", ""))
+        post = services.posts.edit(
+            post_id, request.user, data.get("content", "")
+        )
     except (ValueError, PermissionError, LookupError) as error:
         return _service_error(request, error)
     form_response = _form_response(request, "แก้ไขโพสต์แล้ว")

@@ -6,7 +6,6 @@ from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 
 from community.infrastructure.container import get_community_service
-from community.infrastructure.persistence.models import Community
 
 
 def community_list(request):
@@ -55,10 +54,15 @@ def create_community(request):
     if community.is_private:
         messages.success(
             request,
-            f"สร้างชุมชนส่วนตัว '{community.name}' เรียบร้อยแล้ว · รหัสเชิญ: {community.invite_code}",
+            (
+                f"สร้างชุมชนส่วนตัว '{community.name}' เรียบร้อยแล้ว · "
+                f"รหัสเชิญ: {community.invite_code}"
+            ),
         )
     else:
-        messages.success(request, f"สร้างชุมชนสาธารณะ '{community.name}' เรียบร้อยแล้ว")
+        messages.success(
+            request, f"สร้างชุมชนสาธารณะ '{community.name}' เรียบร้อยแล้ว"
+        )
     return _redirect_to(request, f"/#community-{community.pk}")
 
 
@@ -92,7 +96,9 @@ def join_community(request, community_id):
             request.POST.get("invite_code", ""),
         )
     except (LookupError, ValueError) as error:
-        return _handle_service_error(request, error, f"/#community-{community_id}")
+        return _handle_service_error(
+            request, error, f"/#community-{community_id}"
+        )
     messages.success(request, f"เข้าร่วมชุมชน {community.name} แล้ว")
     return _redirect_to(request, f"/#community-{community.pk}")
 
@@ -117,7 +123,9 @@ def leave_community(request, community_id):
     try:
         community = get_community_service().leave(community_id, request.user)
     except (LookupError, PermissionError) as error:
-        return _handle_service_error(request, error, f"/#community-{community_id}")
+        return _handle_service_error(
+            request, error, f"/#community-{community_id}"
+        )
     messages.success(request, f"ออกจากชุมชน {community.name} เรียบร้อยแล้ว")
     return _redirect_to(request)
 
@@ -128,7 +136,9 @@ def delete_community(request, community_id):
     try:
         name = get_community_service().delete(community_id, request.user)
     except (LookupError, PermissionError) as error:
-        return _handle_service_error(request, error, f"/#community-{community_id}")
+        return _handle_service_error(
+            request, error, f"/#community-{community_id}"
+        )
     messages.success(request, f"ลบชุมชน {name} เรียบร้อยแล้ว")
     return _redirect_to(request, "/#communities-page")
 
@@ -143,7 +153,9 @@ def transfer_ownership(request, community_id):
             request.POST.get("new_owner_id"),
         )
     except (LookupError, PermissionError, ValueError) as error:
-        return _handle_service_error(request, error, f"/#community-{community_id}")
+        return _handle_service_error(
+            request, error, f"/#community-{community_id}"
+        )
     messages.success(
         request,
         f"โอนความเป็นเจ้าของให้ {community.owner.username} เรียบร้อยแล้ว",
@@ -161,6 +173,8 @@ def remove_member(request, community_id, user_id):
             user_id,
         )
     except (LookupError, PermissionError, ValueError) as error:
-        return _handle_service_error(request, error, f"/#community-{community_id}")
+        return _handle_service_error(
+            request, error, f"/#community-{community_id}"
+        )
     messages.success(request, "ลบสมาชิกออกจากชุมชนเรียบร้อยแล้ว")
     return _redirect_to(request, f"/#community-{community.pk}")

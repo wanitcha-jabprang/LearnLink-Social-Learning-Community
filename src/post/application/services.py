@@ -43,12 +43,13 @@ class PostService:
         self.upload_validation = upload_validation
         self.access = access
 
-    def create(self, user, *, content, image=None, video=None, community_id=None):
+    def create(
+        self, user, *, content, image=None, video=None, community_id=None
+    ):
         content = policies.normalize_content(content)
-        error = (
-            self.upload_validation.validate_image(image)
-            or self.upload_validation.validate_video(video)
-        )
+        error = self.upload_validation.validate_image(
+            image
+        ) or self.upload_validation.validate_video(video)
         if error:
             raise ValueError(error)
 
@@ -103,7 +104,9 @@ class CommentService:
         post = self.access.get_post(post_id)
         self.access.require_access(user, post)
         content = policies.normalize_content(content, "ความคิดเห็น")
-        return self.comments.create(post=post, user=user, content=content), post
+        return self.comments.create(
+            post=post, user=user, content=content
+        ), post
 
     def edit(self, comment_id, user, content):
         comment = self.comments.get(comment_id)

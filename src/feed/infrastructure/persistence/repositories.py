@@ -35,8 +35,7 @@ class FeedRepository:
                 | Q(community__name__icontains=query)
             ).distinct()
             searched_communities = Community.objects.filter(
-                Q(name__icontains=query)
-                | Q(description__icontains=query)
+                Q(name__icontains=query) | Q(description__icontains=query)
             )
             searched_communities = (
                 searched_communities.filter(
@@ -81,10 +80,14 @@ class FeedRepository:
                 joined_communities.values_list("pk", flat=True)
             )
             liked_post_ids = set(
-                Like.objects.filter(user=user).values_list("post_id", flat=True)
+                Like.objects.filter(user=user).values_list(
+                    "post_id", flat=True
+                )
             )
             saved_post_ids = set(
-                Bookmark.objects.filter(user=user).values_list("post_id", flat=True)
+                Bookmark.objects.filter(user=user).values_list(
+                    "post_id", flat=True
+                )
             )
             followed_user_ids = set(
                 Follow.objects.filter(follower=user).values_list(

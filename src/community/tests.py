@@ -4,7 +4,10 @@ from django.test import TestCase
 from django.urls import reverse
 
 from community.infrastructure.container import get_community_service
-from community.infrastructure.persistence.models import Community, CommunityMember
+from community.infrastructure.persistence.models import (
+    Community,
+    CommunityMember,
+)
 from post.infrastructure.persistence.models import Post
 from users.infrastructure.persistence.models import User
 
@@ -41,15 +44,29 @@ class CommunityWorkflowTests(TestCase):
             f"/#community-{community.pk}",
             fetch_redirect_response=False,
         )
-        self.assertTrue(CommunityMember.objects.filter(community=community, user=self.owner).exists())
+        self.assertTrue(
+            CommunityMember.objects.filter(
+                community=community, user=self.owner
+            ).exists()
+        )
         self.assertEqual(len(community.invite_code), 8)
 
         self.client.force_login(self.member)
         join_url = reverse("join_community", args=[community.pk])
         self.client.post(join_url, {"invite_code": "WRONG"})
-        self.assertFalse(CommunityMember.objects.filter(community=community, user=self.member).exists())
-        self.client.post(join_url, {"invite_code": community.invite_code.lower()})
-        self.assertTrue(CommunityMember.objects.filter(community=community, user=self.member).exists())
+        self.assertFalse(
+            CommunityMember.objects.filter(
+                community=community, user=self.member
+            ).exists()
+        )
+        self.client.post(
+            join_url, {"invite_code": community.invite_code.lower()}
+        )
+        self.assertTrue(
+            CommunityMember.objects.filter(
+                community=community, user=self.member
+            ).exists()
+        )
 
     def test_public_community_can_be_joined_and_left(self):
         community = Community.objects.create(
@@ -61,11 +78,19 @@ class CommunityWorkflowTests(TestCase):
         self.client.force_login(self.member)
 
         self.client.post(reverse("join_community", args=[community.pk]))
-        self.assertTrue(CommunityMember.objects.filter(community=community, user=self.member).exists())
+        self.assertTrue(
+            CommunityMember.objects.filter(
+                community=community, user=self.member
+            ).exists()
+        )
         self.client.post(reverse("leave_community", args=[community.pk]))
-        self.assertFalse(CommunityMember.objects.filter(community=community, user=self.member).exists())
+        self.assertFalse(
+            CommunityMember.objects.filter(
+                community=community, user=self.member
+            ).exists()
+        )
 
-    def test_join_private_community_with_none_invite_code_returns_validation_error(self):
+    def test_join_rejects_none_invite_code(self):
         community = Community.objects.create(
             name="ชุมชนส่วนตัว",
             description="",
@@ -155,10 +180,15 @@ class CommunityWorkflowTests(TestCase):
         self.assertNotContains(response, community.name)
         self.assertNotContains(response, private_post.content)
         self.assertEqual(
-            self.client.post(reverse("toggle_like", args=[private_post.pk])).status_code,
+            self.client.post(
+                reverse("toggle_like", args=[private_post.pk])
+            ).status_code,
             404,
         )
         self.assertEqual(
-            self.client.post(reverse("create_comment", args=[private_post.pk]), {"content": "แอบอ่าน"}).status_code,
+            self.client.post(
+                reverse("create_comment", args=[private_post.pk]),
+                {"content": "แอบอ่าน"},
+            ).status_code,
             404,
         )

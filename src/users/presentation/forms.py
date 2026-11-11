@@ -1,4 +1,3 @@
-
 from django import forms
 
 from common.infrastructure.storage.upload_validation import validate_image
@@ -22,22 +21,30 @@ class UserProfileForm(forms.ModelForm):
         model = User
         fields = ["username", "full_name", "bio", "profile_image"]
         widgets = {
-            "username": forms.TextInput(attrs={
-                "placeholder": "ชื่อผู้ใช้",
-                "maxlength": "150",
-                "autocomplete": "username",
-            }),
-            "full_name": forms.TextInput(attrs={
-                "placeholder": "ชื่อที่แสดง",
-                "maxlength": "100",
-            }),
-            "bio": forms.Textarea(attrs={
-                "rows": 3,
-                "placeholder": "แนะนำตัวเอง",
-            }),
-            "profile_image": forms.ClearableFileInput(attrs={
-                "accept": "image/*",
-            }),
+            "username": forms.TextInput(
+                attrs={
+                    "placeholder": "ชื่อผู้ใช้",
+                    "maxlength": "150",
+                    "autocomplete": "username",
+                }
+            ),
+            "full_name": forms.TextInput(
+                attrs={
+                    "placeholder": "ชื่อที่แสดง",
+                    "maxlength": "100",
+                }
+            ),
+            "bio": forms.Textarea(
+                attrs={
+                    "rows": 3,
+                    "placeholder": "แนะนำตัวเอง",
+                }
+            ),
+            "profile_image": forms.ClearableFileInput(
+                attrs={
+                    "accept": "image/*",
+                }
+            ),
         }
 
     def clean_username(self):

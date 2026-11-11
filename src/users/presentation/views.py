@@ -6,7 +6,6 @@ from django.shortcuts import redirect, render
 from django.views.decorators.http import require_POST
 
 from users.infrastructure.container import get_user_services
-from users.infrastructure.persistence.models import User
 from users.presentation.forms import ProfileCoverForm, UserProfileForm
 
 
@@ -67,7 +66,9 @@ def user_profile_view(request, user_id):
     context = {
         "profile_user": profile_user,
         "user_posts": user_posts,
-        "is_following": services.follows.is_following(request.user, profile_user),
+        "is_following": services.follows.is_following(
+            request.user, profile_user
+        ),
         **services.profiles.counts(profile_user, user_posts),
     }
     return render(request, "users/user_profile.html", context)

@@ -1,16 +1,30 @@
-from community.infrastructure.persistence.models import Community, CommunityMember
-from post.infrastructure.persistence.models import Bookmark, Comment, Like, Post
+from community.infrastructure.persistence.models import (
+    Community,
+    CommunityMember,
+)
+from post.infrastructure.persistence.models import (
+    Bookmark,
+    Comment,
+    Like,
+    Post,
+)
 
 
 class PostRepository:
     def get(self, post_id):
-        return Post.objects.filter(pk=post_id).select_related("user", "community").first()
+        return (
+            Post.objects.filter(pk=post_id)
+            .select_related("user", "community")
+            .first()
+        )
 
     def get_community(self, community_id):
         return Community.objects.filter(pk=community_id).first()
 
     def is_community_member(self, community, user):
-        return CommunityMember.objects.filter(community=community, user=user).exists()
+        return CommunityMember.objects.filter(
+            community=community, user=user
+        ).exists()
 
     def create(self, **values):
         return Post.objects.create(**values)
@@ -31,9 +45,11 @@ class PostRepository:
 
 class CommentRepository:
     def get(self, comment_id):
-        return Comment.objects.filter(pk=comment_id).select_related(
-            "user", "post__community"
-        ).first()
+        return (
+            Comment.objects.filter(pk=comment_id)
+            .select_related("user", "post__community")
+            .first()
+        )
 
     def create(self, **values):
         return Comment.objects.create(**values)

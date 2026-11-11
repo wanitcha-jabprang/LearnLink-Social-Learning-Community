@@ -36,9 +36,7 @@ class UserAccountService:
         if self.users.email_exists(email):
             raise ValueError("อีเมลนี้ถูกใช้แล้ว")
         try:
-            self.users.validate_password(
-                username, full_name, email, password
-            )
+            self.users.validate_password(username, full_name, email, password)
         except ValidationError as error:
             raise ValueError("\n".join(error.messages)) from error
         return self.users.create(
@@ -113,7 +111,9 @@ class AccountDeletionService:
                 self.account_deletion.transfer_owner(community, successor)
             else:
                 communities_to_delete.append(community)
-        files = self.account_deletion.media_for_deletion(user, communities_to_delete)
+        files = self.account_deletion.media_for_deletion(
+            user, communities_to_delete
+        )
         self.account_deletion.delete_communities(communities_to_delete)
         self.account_deletion.delete_user(user)
         transaction.on_commit(lambda: self.file_storage.delete(files))
