@@ -14,7 +14,6 @@
         </a>
 
         <!-- ชื่อและข้อมูลเจ้าของโพสต์ -->
-
         <div class="post-author">
             <a href="{% url 'user_profile' post.user_id %}"
                style="text-decoration: none; color: inherit; cursor: pointer;">
@@ -28,6 +27,7 @@
                 {% endif %}
             </span>
         </div>
+
         {% if request.user.pk == post.user_id %}
         <div class="post-owner-actions" data-post-owner-actions>
             <details class="post-edit-details">
@@ -43,9 +43,31 @@
                 <button class="post-menu post-owner-action-button post-delete-action" type="submit">ลบ</button>
             </form>
         </div>
+        {% elif post.community %}
+        <!-- 🔒 R-07 เมนูดรอปดาวน์จุดสามจุดลอยลงมา (Dropdown Menu) -->
+        <div class="post-owner-actions" style="position: relative;">
+            <details class="post-edit-details">
+                <summary class="post-menu" aria-label="ตัวเลือกโพสต์" style="list-style: none; cursor: pointer; user-select: none;">···</summary>
+                <div style="position: absolute; right: 0; top: 100%; margin-top: 4px; background: #ffffff; border: 1px solid #e5e7eb; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 100; min-width: 130px; overflow: hidden;">
+                    <form action="{% url 'report_item' post.community.id %}" method="post" style="margin: 0; padding: 0;">
+                        {% csrf_token %}
+                        <input type="hidden" name="report_type" value="POST">
+                        <input type="hidden" name="target_id" value="{{ post.pk }}">
+                        <input type="hidden" name="reason" value="ข้อความสแปม / คำไม่เหมาะสม">
+                        <button type="submit" onclick="return confirm('คุณต้องการรายงานโพสต์นี้ใช่หรือไม่?');" 
+                                style="width: 100%; text-align: left; background: none; border: none; padding: 10px 14px; font-size: 0.9rem; color: #dc3545; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: background 0.2s;"
+                                onmouseover="this.style.backgroundColor='#fff5f5'" 
+                                onmouseout="this.style.backgroundColor='transparent'">
+                            <span>🚩</span> รายงานโพสต์
+                        </button>
+                    </form>
+                </div>
+            </details>
+        </div>
         {% else %}
         <button class="post-menu" type="button" aria-label="ตัวเลือกโพสต์">···</button>
         {% endif %}
+
     </header>
     {% if post.community %}<span class="post-community">#{{ post.community.name }}</span>{% endif %}
     <div class="post-content">{{ post.content|linebreaksbr }}</div>

@@ -2,7 +2,6 @@ import os
 import re
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.core.exceptions import PermissionDenied
 from django.http import Http404, HttpResponseForbidden, FileResponse
 from django.shortcuts import redirect, get_object_or_404
 from django.utils.http import url_has_allowed_host_and_scheme
@@ -12,7 +11,11 @@ from community.infrastructure.container import get_community_service
 from community.infrastructure.persistence.models import Community, CommunityDocument, CommunityReport
 
 # 🔒 R-07 Spam Filtering Keywords List
-FORBIDDEN_KEYWORDS = ["spam", "gambling", "casino", "scam", "พนัน", "คาสิโน"]
+FORBIDDEN_KEYWORDS = [
+    "spam", "gambling", "casino", "scam", "พนัน", "คาสิโน", "สล็อต", "บาคาร่า", "แทงบอล", "หวย", 
+    "ควย", "เหี้ย", "สัส", "เย็ด", "แม่ง", "ระยำ", "มึง", "กู", "อีดอก", "ถ่อย",
+    "fuck", "shit", "bitch", "cunt", "dick"
+]
 
 
 def contains_forbidden_keywords(text):
@@ -33,9 +36,11 @@ def community_detail(request, id):
     except LookupError as error:
         raise Http404(str(error)) from error
 
-    # 🔒 R-03: ตรวจสอบสิทธิ์ Private Community หากไม่ใช่สมาชิกให้ตอบกลับด้วย 403 Forbidden
     if community.is_private:
-        if not request.user.is_authenticated or not community.is_member(request.user):
+        is_owner = (community.owner == request.user) if request.user.is_authenticated else False
+        is_member = community.is_member(request.user) if request.user.is_authenticated else False
+        
+        if not request.user.is_authenticated or (not is_owner and not is_member):
             return HttpResponseForbidden("403 Forbidden: คุณไม่มีสิทธิ์เข้าถึงชุมชนส่วนตัวนี้")
 
     return redirect(f"/#community-{community.pk}")
@@ -83,10 +88,7 @@ def create_community(request):
     if community.is_private:
         messages.success(
             request,
-            (
-                f"สร้างชุมชนส่วนตัว '{community.name}' เรียบร้อยแล้ว · "
-                f"รหัสเชิญ: {community.invite_code}"
-            ),
+            f"สร้างชุมชนส่วนตัว '{community.name}' เรียบร้อยแล้ว · รหัสเชิญ: {community.invite_code}",
         )
     else:
         messages.success(
@@ -116,9 +118,8 @@ def edit_community(request, community_id):
             is_private=request.POST.get("is_private") == "true",
         )
     except (LookupError, PermissionError, ValueError) as error:
-        return _handle_service_error(
-            request, error, f"/#community-{community_id}"
-        )
+        return _handle_service_error(request, error, f"/#community-{community_id}")
+
     messages.success(request, f"อัปเดตข้อมูลชุมชน '{community.name}' เรียบร้อยแล้ว")
     return _redirect_to(request, f"/#community-{community.pk}")
 
@@ -133,9 +134,8 @@ def join_community(request, community_id):
             request.POST.get("invite_code", ""),
         )
     except (LookupError, ValueError) as error:
-        return _handle_service_error(
-            request, error, f"/#community-{community_id}"
-        )
+        return _handle_service_error(request, error, f"/#community-{community_id}")
+
     messages.success(request, f"เข้าร่วมชุมชน {community.name} แล้ว")
     return _redirect_to(request, f"/#community-{community.pk}")
 
@@ -150,6 +150,7 @@ def join_community_by_code(request):
         )
     except LookupError as error:
         return _handle_service_error(request, error, "/#communities-page")
+
     messages.success(request, f"เข้าร่วมชุมชน {community.name} แล้ว")
     return _redirect_to(request, f"/#community-{community.pk}")
 
@@ -160,9 +161,8 @@ def leave_community(request, community_id):
     try:
         community = get_community_service().leave(community_id, request.user)
     except (LookupError, PermissionError) as error:
-        return _handle_service_error(
-            request, error, f"/#community-{community_id}"
-        )
+        return _handle_service_error(request, error, f"/#community-{community_id}")
+
     messages.success(request, f"ออกจากชุมชน {community.name} เรียบร้อยแล้ว")
     return _redirect_to(request)
 
@@ -173,9 +173,8 @@ def delete_community(request, community_id):
     try:
         name = get_community_service().delete(community_id, request.user)
     except (LookupError, PermissionError) as error:
-        return _handle_service_error(
-            request, error, f"/#community-{community_id}"
-        )
+        return _handle_service_error(request, error, f"/#community-{community_id}")
+
     messages.success(request, f"ลบชุมชน {name} เรียบร้อยแล้ว")
     return _redirect_to(request, "/#communities-page")
 
@@ -190,9 +189,8 @@ def transfer_ownership(request, community_id):
             request.POST.get("new_owner_id"),
         )
     except (LookupError, PermissionError, ValueError) as error:
-        return _handle_service_error(
-            request, error, f"/#community-{community_id}"
-        )
+        return _handle_service_error(request, error, f"/#community-{community_id}")
+
     messages.success(
         request,
         f"โอนความเป็นเจ้าของให้ {community.owner.username} เรียบร้อยแล้ว",
@@ -210,9 +208,8 @@ def remove_member(request, community_id, user_id):
             user_id,
         )
     except (LookupError, PermissionError, ValueError) as error:
-        return _handle_service_error(
-            request, error, f"/#community-{community_id}"
-        )
+        return _handle_service_error(request, error, f"/#community-{community_id}")
+
     messages.success(request, "ลบสมาชิกออกจากชุมชนเรียบร้อยแล้ว")
     return _redirect_to(request, f"/#community-{community.pk}")
 
@@ -223,17 +220,20 @@ def download_document(request, document_id):
     document = get_object_or_404(CommunityDocument, id=document_id)
     community = document.community
 
-    # เช็กว่าผู้ใช้เป็นสมาชิกของชุมชนหรือไม่
     if not community.is_member(request.user):
         return HttpResponseForbidden("403 Forbidden: คุณไม่มีสิทธิ์ดาวน์โหลดไฟล์นี้")
 
     if not document.file or not os.path.exists(document.file.path):
         raise Http404("ไม่พบไฟล์เอกสาร")
 
-    return FileResponse(open(document.file.path, 'rb'), as_attachment=True, filename=os.path.basename(document.file.name))
+    return FileResponse(
+        open(document.file.path, "rb"),
+        as_attachment=True,
+        filename=os.path.basename(document.file.name),
+    )
 
 
-# 🔒 R-07 Report System View (รายงาน Post หรือ User)
+# 🔒 R-07 Report System View & Auto-Hide
 @login_required
 @require_POST
 def report_item(request, community_id):
@@ -246,6 +246,7 @@ def report_item(request, community_id):
         messages.error(request, "กรุณากรอกข้อมูลการรายงานให้ครบถ้วน")
         return _redirect_to(request, f"/#community-{community_id}")
 
+    # บันทึกประวัติการรายงาน
     CommunityReport.objects.create(
         community=community,
         reporter=request.user,
@@ -253,6 +254,17 @@ def report_item(request, community_id):
         target_id=target_id,
         reason=reason,
     )
+
+    # 🔒 R-07 Auto-Hide Logic: ถ้าถูก Report ครบ 3 ครั้งขึ้นไป ให้ซ่อนโพสต์
+    reports_count = CommunityReport.objects.filter(
+        community=community,
+        report_type=report_type,
+        target_id=target_id,
+    ).count()
+
+    if reports_count >= 3 and report_type == "POST":
+        from post.infrastructure.persistence.models import Post
+        Post.objects.filter(id=target_id).update(is_hidden=True)
 
     messages.success(request, "ส่งรายงานเรียบร้อยแล้ว ทีมงานจะดำเนินการตรวจสอบโดยเร็ว")
     return _redirect_to(request, f"/#community-{community_id}")
