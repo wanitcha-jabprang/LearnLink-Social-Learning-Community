@@ -43,11 +43,11 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
 
-    "users",
-    "feed",
-    "community",
-    "post",
-    "core",
+    "users.apps.UsersConfig",
+    "feed.apps.FeedConfig",
+    "community.apps.CommunityConfig",
+    "post.apps.PostConfig",
+    "core.apps.CoreConfig",
 
 ]
 
@@ -120,7 +120,7 @@ AUTH_PASSWORD_VALIDATORS = [
     {
         'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
     },
-    
+
 ]
 PASSWORD_HASHERS = [
     "django.contrib.auth.hashers.Argon2PasswordHasher",

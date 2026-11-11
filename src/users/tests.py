@@ -7,9 +7,9 @@ from django.test import TestCase
 from django.urls import reverse
 from PIL import Image
 
-from community.models import Community, CommunityMember
-from post.models import Post
-from users.models import User
+from community.infrastructure.persistence.models import Community, CommunityMember
+from post.infrastructure.persistence.models import Post
+from users.infrastructure.persistence.models import User
 
 
 class AuthenticationFlowTests(TestCase):

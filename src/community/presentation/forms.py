@@ -1,8 +1,8 @@
 from django import forms
 from django.contrib.auth import get_user_model
-from .models import Community
+from community.infrastructure.persistence.models import Community
+from community.infrastructure.container import get_community_service
 
-User = get_user_model()
 
 
 class CommunityForm(forms.ModelForm):
@@ -28,7 +28,7 @@ class JoinByInviteCodeForm(forms.Form):
 class TransferOwnershipForm(forms.Form):
     """ฟอร์มเลือกสมาชิกที่จะโอนสิทธิ์ความเป็นเจ้าของกลุ่มให้"""
     new_owner = forms.ModelChoiceField(
-        queryset=User.objects.none(),
+        queryset=get_user_model().objects.none(),
         label="เลือกเจ้าของกลุ่มคนใหม่",
         widget=forms.Select(attrs={'class': 'form-select'})
     )
@@ -36,6 +36,6 @@ class TransferOwnershipForm(forms.Form):
     def __init__(self, *args, community=None, current_user=None, **kwargs):
         super().__init__(*args, **kwargs)
         if community and current_user:
-            # ดึงเฉพาะสมาชิกในกลุ่มที่ไม่ใช่ตัวเจ้าของปัจจุบัน
-            member_user_ids = community.members.exclude(user=current_user).values_list('user_id', flat=True)
-            self.fields['new_owner'].queryset = User.objects.filter(id__in=member_user_ids)
+            self.fields['new_owner'].queryset = (
+                get_community_service().transfer_candidates(community, current_user)
+            )

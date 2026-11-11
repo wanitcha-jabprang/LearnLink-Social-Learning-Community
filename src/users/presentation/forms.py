@@ -1,6 +1,7 @@
 
 from django import forms
-from .models import User
+from users.infrastructure.persistence.models import User
+from users.infrastructure.container import get_user_service
 
 
 class ProfileCoverForm(forms.Form):
@@ -38,9 +39,9 @@ class UserProfileForm(forms.ModelForm):
 
     def clean_username(self):
         username = self.cleaned_data["username"].strip()
-        if User.objects.filter(username__iexact=username).exclude(
-            pk=self.instance.pk
-        ).exists():
+        if get_user_service().username_exists_for_other_user(
+            username, self.instance.pk
+        ):
             raise forms.ValidationError("ชื่อผู้ใช้นี้ถูกใช้แล้ว")
         return username
 

@@ -1,8 +1,8 @@
 
 from django.db import models
 from common.abstracts import TimestampedModel
-from users.models import User
-from community.models import Community
+from users.infrastructure.persistence.models import User
+from community.infrastructure.persistence.models import Community
 
 
 class Post(TimestampedModel):
@@ -79,4 +79,3 @@ class Bookmark(TimestampedModel):
 
     class Meta:
         unique_together = ("post", "user")
-
