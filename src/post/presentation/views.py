@@ -7,13 +7,7 @@ from django.shortcuts import redirect
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 
-from post.infrastructure.container import get_post_service
-from post.infrastructure.storage.upload_validation import (
-    MAX_IMAGE_SIZE,
-    MAX_VIDEO_SIZE,
-    validate_image as _validate_image,
-    validate_video as _validate_video,
-)
+from post.infrastructure.container import get_post_services
 
 
 def _request_data(request):
@@ -51,7 +45,9 @@ def _form_response(request, message, *, error=False):
 
 
 def _error_response(request, message, status=400):
-    return _form_response(request, message, error=True) or _error(message, status)
+    return _form_response(request, message, error=True) or _error(
+        message, status
+    )
 
 
 def _require_authentication(view):
@@ -66,7 +62,9 @@ def _require_authentication(view):
 
 def _service_error(request, error, *, permission_status=403):
     if isinstance(error, PermissionError):
-        status = 404 if str(error) == "คุณไม่มีสิทธิ์เข้าถึงโพสต์นี้" else permission_status
+        status = (
+            404 if str(error) == "คุณไม่มีสิทธิ์เข้าถึงโพสต์นี้" else permission_status
+        )
     elif isinstance(error, LookupError):
         status = 404
     else:
@@ -78,8 +76,9 @@ def _service_error(request, error, *, permission_status=403):
 @require_POST
 def create_post(request):
     community_id = request.POST.get("community_id", "").strip()
+    services = get_post_services()
     try:
-        post = get_post_service().create(
+        post = services.posts.create(
             request.user,
             content=request.POST.get("content", ""),
             image=request.FILES.get("image"),
@@ -91,7 +90,15 @@ def create_post(request):
     form_response = _form_response(request, "โพสต์ของคุณถูกบันทึกแล้ว")
     if form_response:
         return form_response
-    return JsonResponse({"post": get_post_service().post_payload(post)}, status=201)
+    return JsonResponse(
+        {
+            "post": services.posts.payload(
+                post,
+                comments_count=services.comments.count_for_post(post),
+            )
+        },
+        status=201,
+    )
 
 
 @_require_authentication
@@ -100,21 +107,32 @@ def edit_post(request, post_id):
     data = _request_data(request)
     if not isinstance(data, dict) and not hasattr(data, "get"):
         return _error_response(request, "ข้อมูลที่ส่งมาไม่ถูกต้อง")
+    services = get_post_services()
     try:
-        post = get_post_service().edit(post_id, request.user, data.get("content", ""))
+        post = services.posts.edit(
+            post_id, request.user, data.get("content", "")
+        )
     except (ValueError, PermissionError, LookupError) as error:
         return _service_error(request, error)
     form_response = _form_response(request, "แก้ไขโพสต์แล้ว")
     if form_response:
         return form_response
-    return JsonResponse({"post": get_post_service().post_payload(post)})
+    return JsonResponse(
+        {
+            "post": services.posts.payload(
+                post,
+                comments_count=services.comments.count_for_post(post),
+            )
+        }
+    )
 
 
 @_require_authentication
 @require_POST
 def delete_post(request, post_id):
+    services = get_post_services()
     try:
-        get_post_service().delete(post_id, request.user)
+        services.posts.delete(post_id, request.user)
     except (PermissionError, LookupError) as error:
         return _service_error(request, error)
     form_response = _form_response(request, "ลบโพสต์แล้ว")
@@ -129,8 +147,9 @@ def create_comment(request, post_id):
     data = _request_data(request)
     if not isinstance(data, dict) and not hasattr(data, "get"):
         return _error_response(request, "ข้อมูลที่ส่งมาไม่ถูกต้อง")
+    services = get_post_services()
     try:
-        comment, post = get_post_service().create_comment(
+        comment, post = services.comments.create(
             post_id,
             request.user,
             data.get("content", ""),
@@ -148,7 +167,7 @@ def create_comment(request, post_id):
                 "author": comment.user.full_name or comment.user.username,
                 "created_at": comment.created_at.isoformat(),
             },
-            "comments_count": get_post_service().comments.count_for_post(post),
+            "comments_count": services.comments.count_for_post(post),
         },
         status=201,
     )
@@ -160,8 +179,9 @@ def edit_comment(request, comment_id):
     data = _request_data(request)
     if not isinstance(data, dict) and not hasattr(data, "get"):
         return _error_response(request, "ข้อมูลที่ส่งมาไม่ถูกต้อง")
+    services = get_post_services()
     try:
-        comment = get_post_service().edit_comment(
+        comment = services.comments.edit(
             comment_id,
             request.user,
             data.get("content", ""),
@@ -179,8 +199,9 @@ def edit_comment(request, comment_id):
 @_require_authentication
 @require_POST
 def delete_comment(request, comment_id):
+    services = get_post_services()
     try:
-        get_post_service().delete_comment(comment_id, request.user)
+        services.comments.delete(comment_id, request.user)
     except (PermissionError, LookupError) as error:
         return _service_error(request, error)
     form_response = _form_response(request, "ลบความคิดเห็นแล้ว")
@@ -190,8 +211,9 @@ def delete_comment(request, comment_id):
 
 
 def _toggle(request, post_id, *, kind, message):
+    services = get_post_services()
     try:
-        created = get_post_service().toggle(kind, post_id, request.user)
+        created = services.interactions.toggle(kind, post_id, request.user)
     except (PermissionError, LookupError) as error:
         return _service_error(request, error)
     form_response = _form_response(

@@ -1,15 +1,23 @@
 import tempfile
 from io import BytesIO
+from unittest.mock import patch
 
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import override_settings
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 from PIL import Image
 
-from community.infrastructure.persistence.models import Community, CommunityMember
+from common.infrastructure.storage.upload_validation import (
+    MAX_IMAGE_SIZE,
+    validate_image,
+)
+from community.infrastructure.persistence.models import (
+    Community,
+    CommunityMember,
+)
 from post.infrastructure.persistence.models import Post
 from users.infrastructure.persistence.models import User
+from users.presentation.forms import ProfileCoverForm, UserProfileForm
 
 
 class AuthenticationFlowTests(TestCase):
@@ -50,7 +58,9 @@ class AuthenticationFlowTests(TestCase):
         )
 
         self.assertRedirects(response, "/#signup-page")
-        self.assertFalse(User.objects.filter(email="new.learner@example.com").exists())
+        self.assertFalse(
+            User.objects.filter(email="new.learner@example.com").exists()
+        )
 
     def test_login_accepts_email_and_logout_requires_post(self):
         user = User.objects.create_user(
@@ -67,7 +77,9 @@ class AuthenticationFlowTests(TestCase):
         self.assertRedirects(response, reverse("home"))
         self.assertIn("_auth_user_id", self.client.session)
         self.assertEqual(self.client.get(reverse("logout")).status_code, 405)
-        self.assertRedirects(self.client.post(reverse("logout")), reverse("home"))
+        self.assertRedirects(
+            self.client.post(reverse("logout")), reverse("home")
+        )
         self.assertNotIn("_auth_user_id", self.client.session)
 
     def test_profile_can_update_username_and_upload_profile_image(self):
@@ -79,10 +91,12 @@ class AuthenticationFlowTests(TestCase):
         )
         self.client.force_login(user)
         editor_response = self.client.get(reverse("home"))
-        self.assertContains(editor_response, 'data-profile-crop-canvas')
-        self.assertContains(editor_response, 'data-profile-image-zoom')
-        self.assertContains(editor_response, 'data-profile-cropper-status')
-        self.assertContains(editor_response, 'accept="image/jpeg,image/png,image/webp"')
+        self.assertContains(editor_response, "data-profile-crop-canvas")
+        self.assertContains(editor_response, "data-profile-image-zoom")
+        self.assertContains(editor_response, "data-profile-cropper-status")
+        self.assertContains(
+            editor_response, 'accept="image/jpeg,image/png,image/webp"'
+        )
         image_file = BytesIO()
         Image.new("RGB", (1, 1), color="blue").save(image_file, format="PNG")
         image = SimpleUploadedFile(
@@ -106,9 +120,15 @@ class AuthenticationFlowTests(TestCase):
                 self.assertRedirects(response, "/#profile-page")
                 user.refresh_from_db()
                 self.assertEqual(user.username, "my-new-name")
-                self.assertTrue(user.profile_image.name.startswith("profiles/"))
-                self.assertTrue(user.profile_image.storage.exists(user.profile_image.name))
-                self.assertContains(self.client.get(reverse("home")), user.profile_image.url)
+                self.assertTrue(
+                    user.profile_image.name.startswith("profiles/")
+                )
+                self.assertTrue(
+                    user.profile_image.storage.exists(user.profile_image.name)
+                )
+                self.assertContains(
+                    self.client.get(reverse("home")), user.profile_image.url
+                )
 
     def test_profile_cover_can_be_uploaded_and_previewed(self):
         user = User.objects.create_user(
@@ -119,7 +139,9 @@ class AuthenticationFlowTests(TestCase):
         )
         self.client.force_login(user)
         image_file = BytesIO()
-        Image.new("RGB", (640, 240), color="green").save(image_file, format="PNG")
+        Image.new("RGB", (640, 240), color="green").save(
+            image_file, format="PNG"
+        )
         image = SimpleUploadedFile(
             "cover.png",
             image_file.getvalue(),
@@ -135,12 +157,140 @@ class AuthenticationFlowTests(TestCase):
 
                 self.assertRedirects(response, "/#profile-page")
                 user.refresh_from_db()
-                self.assertTrue(user.profile_cover.name.startswith("profile_covers/"))
-                self.assertTrue(user.profile_cover.storage.exists(user.profile_cover.name))
+                self.assertTrue(
+                    user.profile_cover.name.startswith("profile_covers/")
+                )
+                self.assertTrue(
+                    user.profile_cover.storage.exists(user.profile_cover.name)
+                )
                 self.assertContains(
                     self.client.get(reverse("home")),
                     user.profile_cover.url,
                 )
+
+    def test_profile_image_and_cover_validation_runs_on_server(self):
+        user = User.objects.create_user(
+            username="validateduser",
+            email="validated@example.com",
+            password="StrongPass123!",
+            full_name="ผู้เรียน",
+        )
+        image_file = BytesIO()
+        Image.new("RGB", (1, 1), color="blue").save(image_file, format="PNG")
+
+        with patch(
+            "users.presentation.forms.validate_image",
+            return_value="รูปภาพต้องมีขนาดไม่เกิน 10 MB",
+        ):
+            profile_form = UserProfileForm(
+                data={
+                    "username": user.username,
+                    "full_name": user.full_name,
+                    "bio": "",
+                },
+                files={
+                    "profile_image": SimpleUploadedFile(
+                        "profile.png",
+                        image_file.getvalue(),
+                        content_type="image/png",
+                    )
+                },
+                instance=user,
+            )
+            cover_form = ProfileCoverForm(
+                files={
+                    "profile_cover": SimpleUploadedFile(
+                        "cover.png",
+                        image_file.getvalue(),
+                        content_type="image/png",
+                    )
+                }
+            )
+            profile_valid = profile_form.is_valid()
+            cover_valid = cover_form.is_valid()
+
+        self.assertFalse(profile_valid)
+        self.assertIn("10 MB", str(profile_form.errors["profile_image"]))
+        self.assertFalse(cover_valid)
+        self.assertIn("10 MB", str(cover_form.errors["profile_cover"]))
+
+    def test_image_validation_rejects_corrupted_file(self):
+        image = SimpleUploadedFile(
+            "corrupted.png",
+            b"not a valid image",
+            content_type="image/png",
+        )
+
+        self.assertEqual(validate_image(image), "ไฟล์รูปภาพไม่ถูกต้อง")
+
+    def test_image_validation_accepts_valid_upload(self):
+        image_file = BytesIO()
+        Image.new("RGB", (1, 1), color="blue").save(
+            image_file,
+            format="PNG",
+        )
+        image = SimpleUploadedFile(
+            "valid.png",
+            image_file.getvalue(),
+            content_type="image/png",
+        )
+
+        self.assertIsNone(validate_image(image))
+
+    def test_image_validation_accepts_only_supported_formats(self):
+        for image_format in ("JPEG", "PNG", "WEBP"):
+            with self.subTest(image_format=image_format):
+                image_file = BytesIO()
+                Image.new("RGB", (2, 2), color="blue").save(
+                    image_file,
+                    format=image_format,
+                )
+                image = SimpleUploadedFile(
+                    f"valid.{image_format.lower()}",
+                    image_file.getvalue(),
+                    content_type=f"image/{image_format.lower()}",
+                )
+
+                self.assertIsNone(validate_image(image))
+
+        image_file = BytesIO()
+        Image.new("RGB", (2, 2), color="blue").save(image_file, format="GIF")
+        unsupported_image = SimpleUploadedFile(
+            "unsupported.gif",
+            image_file.getvalue(),
+            content_type="image/gif",
+        )
+
+        self.assertEqual(
+            validate_image(unsupported_image),
+            "รองรับเฉพาะไฟล์รูปภาพ JPEG, PNG และ WEBP",
+        )
+
+    def test_image_validation_rejects_decompression_bomb_warning(self):
+        image_file = BytesIO()
+        Image.new("RGB", (10, 10), color="blue").save(
+            image_file,
+            format="PNG",
+        )
+        image = SimpleUploadedFile(
+            "large-dimensions.png",
+            image_file.getvalue(),
+            content_type="image/png",
+        )
+
+        with patch.object(Image, "MAX_IMAGE_PIXELS", 50):
+            error = validate_image(image)
+
+        self.assertEqual(error, "รูปภาพมีขนาดพิกเซลเกินกำหนด")
+
+    def test_shared_image_validation_rejects_oversized_uploads(self):
+        class OversizedUpload:
+            size = MAX_IMAGE_SIZE + 1
+
+        self.assertEqual(
+            validate_image(OversizedUpload()),
+            "รูปภาพต้องมีขนาดไม่เกิน 10 MB",
+        )
 
     def test_profile_actions_and_cover_save_visibility(self):
         user = User.objects.create_user(
@@ -162,7 +312,7 @@ class AuthenticationFlowTests(TestCase):
         self.assertIn('id="delete-account-password"', content)
         self.assertIn("ยืนยันการลบบัญชีถาวร", content)
         self.assertContains(response, "▧ แก้ไขภาพปก")
-        self.assertContains(response, 'data-profile-cover-save hidden')
+        self.assertContains(response, "data-profile-cover-save hidden")
         self.assertNotContains(response, "บันทึกรูปปก")
 
     def test_profile_shows_communities_the_user_has_joined(self):
@@ -187,7 +337,9 @@ class AuthenticationFlowTests(TestCase):
         self.assertContains(response, f'href="#community-{community.pk}"')
         self.assertContains(response, "1 แห่ง")
 
-    def test_account_deletion_requires_password_and_transfers_community_owner(self):
+    def test_account_deletion_requires_password_and_transfers_community_owner(
+        self,
+    ):
         owner = User.objects.create_user(
             username="leavingowner",
             email="owner@example.com",
@@ -207,7 +359,9 @@ class AuthenticationFlowTests(TestCase):
         )
         CommunityMember.objects.create(community=community, user=owner)
         CommunityMember.objects.create(community=community, user=member)
-        Post.objects.create(user=owner, community=community, content="โพสต์ที่จะถูกลบ")
+        Post.objects.create(
+            user=owner, community=community, content="โพสต์ที่จะถูกลบ"
+        )
         self.client.force_login(owner)
 
         wrong_password = self.client.post(

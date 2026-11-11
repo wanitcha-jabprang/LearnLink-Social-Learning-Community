@@ -5,8 +5,7 @@ from django.http import Http404
 from django.shortcuts import redirect, render
 from django.views.decorators.http import require_POST
 
-from users.infrastructure.container import get_user_service
-from users.infrastructure.persistence.models import User
+from users.infrastructure.container import get_user_services
 from users.presentation.forms import ProfileCoverForm, UserProfileForm
 
 
@@ -15,7 +14,7 @@ def login_view(request):
         return redirect("home")
 
     identifier = request.POST.get("identifier", "").strip()
-    username = get_user_service().login_username(identifier)
+    username = get_user_services().accounts.login_username(identifier)
     user = authenticate(
         request,
         username=username,
@@ -33,7 +32,7 @@ def register_view(request):
         return redirect("home")
 
     try:
-        user = get_user_service().register(
+        user = get_user_services().accounts.register(
             full_name=request.POST.get("full_name", ""),
             username=request.POST.get("username", ""),
             email=request.POST.get("email", ""),
@@ -56,18 +55,21 @@ def profile_view(request):
 
 @login_required
 def user_profile_view(request, user_id):
-    profile_user = get_user_service().get_user(user_id)
+    services = get_user_services()
+    profile_user = services.accounts.get_user(user_id)
     if profile_user is None:
         raise Http404("ไม่พบผู้ใช้นี้")
     if profile_user.pk == request.user.pk:
         return redirect("/#profile-page")
 
-    user_posts = get_user_service().visible_posts(profile_user, request.user)
+    user_posts = services.profiles.visible_posts(profile_user, request.user)
     context = {
         "profile_user": profile_user,
         "user_posts": user_posts,
-        "is_following": get_user_service().is_following(request.user, profile_user),
-        **get_user_service().profile_counts(profile_user, user_posts),
+        "is_following": services.follows.is_following(
+            request.user, profile_user
+        ),
+        **services.profiles.counts(profile_user, user_posts),
     }
     return render(request, "users/user_profile.html", context)
 
@@ -88,7 +90,7 @@ def edit_profile_view(request):
         )
         if form.is_valid():
             user = form.save(commit=False)
-            get_user_service().save_profile(user)
+            get_user_services().profiles.save(user, form.changed_data)
             messages.success(request, "บันทึกโปรไฟล์เรียบร้อยแล้ว")
             return redirect("/#profile-page")
 
@@ -109,7 +111,7 @@ def update_profile_cover_view(request):
                 messages.error(request, error)
         return redirect("/#profile-page")
 
-    get_user_service().update_profile_cover(
+    get_user_services().profiles.update_cover(
         request.user,
         form.cleaned_data["profile_cover"],
     )
@@ -120,15 +122,15 @@ def update_profile_cover_view(request):
 @login_required
 @require_POST
 def delete_account_view(request):
-    service = get_user_service()
-    if not service.password_matches(
+    services = get_user_services()
+    if not services.account_deletion.password_matches(
         request.user,
         request.POST.get("password", ""),
     ):
         messages.error(request, "รหัสผ่านไม่ถูกต้อง จึงยังไม่ได้ลบบัญชี")
         return redirect("/#profile-page")
 
-    service.delete_account(request.user)
+    services.account_deletion.delete_account(request.user)
     logout(request)
     messages.success(request, "ลบบัญชีของคุณเรียบร้อยแล้ว")
     return redirect("home")
@@ -137,12 +139,12 @@ def delete_account_view(request):
 @login_required
 @require_POST
 def follow_view(request, user_id):
-    service = get_user_service()
-    target_user = service.get_user(user_id)
+    services = get_user_services()
+    target_user = services.accounts.get_user(user_id)
     if target_user is None:
         raise Http404("ไม่พบผู้ใช้นี้")
     try:
-        created = service.follow(request.user, target_user)
+        created = services.follows.follow(request.user, target_user)
     except ValueError as error:
         messages.error(request, str(error))
         return redirect("profile")
@@ -157,12 +159,12 @@ def follow_view(request, user_id):
 @login_required
 @require_POST
 def unfollow_view(request, user_id):
-    service = get_user_service()
-    target_user = service.get_user(user_id)
+    services = get_user_services()
+    target_user = services.accounts.get_user(user_id)
     if target_user is None:
         raise Http404("ไม่พบผู้ใช้นี้")
     try:
-        deleted = service.unfollow(request.user, target_user)
+        deleted = services.follows.unfollow(request.user, target_user)
     except ValueError as error:
         messages.error(request, str(error))
         return redirect("profile")

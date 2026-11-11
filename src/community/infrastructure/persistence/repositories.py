@@ -1,6 +1,9 @@
 from django.contrib.auth import get_user_model
 
-from community.infrastructure.persistence.models import Community, CommunityMember
+from community.infrastructure.persistence.models import (
+    Community,
+    CommunityMember,
+)
 
 
 class CommunityRepository:
@@ -22,13 +25,19 @@ class CommunityRepository:
 
 class MembershipRepository:
     def join(self, community, user):
-        return CommunityMember.objects.get_or_create(community=community, user=user)
+        return CommunityMember.objects.get_or_create(
+            community=community, user=user
+        )
 
     def has_member(self, community, user):
-        return CommunityMember.objects.filter(community=community, user=user).exists()
+        return CommunityMember.objects.filter(
+            community=community, user=user
+        ).exists()
 
     def leave(self, community, user):
-        return CommunityMember.objects.filter(community=community, user=user).delete()[0]
+        return CommunityMember.objects.filter(
+            community=community, user=user
+        ).delete()[0]
 
     def remove(self, community, user):
         return self.leave(community, user)
@@ -37,7 +46,9 @@ class MembershipRepository:
         return get_user_model().objects.filter(pk=user_id).first()
 
     def transfer_candidates(self, community, current_user):
-        member_ids = CommunityMember.objects.filter(community=community).exclude(
-            user=current_user
-        ).values_list("user_id", flat=True)
+        member_ids = (
+            CommunityMember.objects.filter(community=community)
+            .exclude(user=current_user)
+            .values_list("user_id", flat=True)
+        )
         return get_user_model().objects.filter(pk__in=member_ids)

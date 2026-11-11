@@ -4,14 +4,18 @@ from community.domain import policies
 
 
 class CommunityService:
-    def __init__(self, communities, memberships):
+    def __init__(self, communities, memberships, image_validation):
         self.communities = communities
         self.memberships = memberships
+        self.image_validation = image_validation
 
     @transaction.atomic
     def create(self, *, name, description, image, is_private, owner):
         name = policies.normalize_name(name)
         policies.validate_name(name)
+        image_error = self.image_validation.validate_image(image)
+        if image_error:
+            raise ValueError(image_error)
         community = self.communities.create(
             name=name,
             description=description,
@@ -29,10 +33,15 @@ class CommunityService:
             raise LookupError("ไม่พบชุมชนนี้")
         return community
 
-    def update(self, community_id, actor, *, name, description, image, is_private):
+    def update(
+        self, community_id, actor, *, name, description, image, is_private
+    ):
         community = self.get(community_id)
         if not policies.is_owner(community.owner_id, actor.pk):
             raise PermissionError("คุณไม่มีสิทธิ์ในการแก้ไขชุมชนนี้")
+        image_error = self.image_validation.validate_image(image)
+        if image_error:
+            raise ValueError(image_error)
         community.name = policies.normalize_name(name)
         policies.validate_name(community.name)
         community.description = description

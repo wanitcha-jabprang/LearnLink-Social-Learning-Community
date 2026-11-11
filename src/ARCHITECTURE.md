@@ -21,6 +21,19 @@
 ใช้ domain policies และ repositories ที่ส่งเข้ามาเป็น dependencies;
 ส่วน `infrastructure` ดูแลการ query และบันทึกข้อมูลผ่าน ORM รวมถึงการจัดเก็บไฟล์
 
+Application services แยกตามความรับผิดชอบและ use case เช่น บัญชี โปรไฟล์
+การติดตาม การลบบัญชี โพสต์ ความคิดเห็น และปฏิสัมพันธ์กับโพสต์
+`PostAccessService` รวมกฎตรวจสิทธิ์ที่ใช้ร่วมกัน ส่วน container ใน
+`infrastructure` เป็น composition root ที่สร้างและส่ง dependencies ให้ services
+แทนการสร้าง repository ภายใน business logic
+
+กฎใน `domain` ใช้ pure functions เมื่อไม่มี state หรือ dependency ที่ต้องเก็บไว้;
+ไม่จำเป็นต้องห่อทุกฟังก์ชันเป็น class เพื่อให้เป็น OOP
+เช่นเดียวกัน Django function-based views ยังคงเป็น HTTP adapters ที่เหมาะกับ
+แต่ละ endpoint ฝั่ง Python เป็นแหล่งตรวจสอบกฎธุรกิจและไฟล์อัปโหลด
+ส่วน JavaScript ใช้เฉพาะพฤติกรรมที่ต้องทำงานใน browser เช่น preview และคร็อปรูป
+templates และ CSS คงเป็นรูปแบบ declarative ของชั้นนำเสนอ
+
 App configuration ของ Django โหลด models จาก
 `infrastructure.persistence.models` โดยตรง ขณะที่ URL หลักของโปรเจกต์ include
 `presentation.urls` ของแต่ละฟีเจอร์ ไฟล์ `admin.py`, `apps.py`

@@ -2,7 +2,10 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
 from django.db.models import Q
 
-from community.infrastructure.persistence.models import Community, CommunityMember
+from community.infrastructure.persistence.models import (
+    Community,
+    CommunityMember,
+)
 from post.infrastructure.persistence.models import Post
 from users.infrastructure.persistence.models import Follow
 
@@ -35,9 +38,11 @@ class UserRepository:
         validate_password(password, user)
 
     def username_exists_for_other_user(self, username, user_id):
-        return self.model.objects.filter(username__iexact=username).exclude(
-            pk=user_id
-        ).exists()
+        return (
+            self.model.objects.filter(username__iexact=username)
+            .exclude(pk=user_id)
+            .exists()
+        )
 
     def save(self, user, fields=None):
         user.save(update_fields=fields)
@@ -50,7 +55,9 @@ class FollowRepository:
         ).exists()
 
     def add(self, follower, following):
-        return Follow.objects.get_or_create(follower=follower, following=following)
+        return Follow.objects.get_or_create(
+            follower=follower, following=following
+        )
 
     def remove(self, follower, following):
         return Follow.objects.filter(

@@ -6,7 +6,9 @@ class FeedService:
         self.repository = repository
 
     def home_context(self, user, query="", saved_only=False):
-        normalized_query = normalize_search_term(query.strip()) if query else ""
+        normalized_query = (
+            normalize_search_term(query.strip()) if query else ""
+        )
         return self.repository.home_context(
             user,
             normalized_query,
