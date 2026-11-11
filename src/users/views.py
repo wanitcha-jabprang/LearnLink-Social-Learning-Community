@@ -1,4 +1,5 @@
 from django.contrib import messages
+from django.core.cache import cache
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.password_validation import validate_password
@@ -15,22 +16,46 @@ from .models import Follow, User
 from post.models import Post
 from django.db.models import Q
 
+
 def login_view(request):
     if request.method != "POST":
+        return redirect("home")
+
+    ip_address = request.META.get("REMOTE_ADDR", "unknown")
+    cache_key = f"login_failed:{ip_address}"
+
+    failed_attempts = cache.get(cache_key, 0)
+
+    if failed_attempts >= 5:
+        messages.error(
+            request,
+            "คุณเข้าสู่ระบบไม่สำเร็จเกินจำนวนครั้งที่กำหนด กรุณาลองใหม่ภายหลัง"
+        )
         return redirect("home")
 
     identifier = request.POST.get("identifier", "").strip()
     password = request.POST.get("password", "")
     username = identifier
+
     if "@" in identifier:
         user = User.objects.filter(email__iexact=identifier).first()
         username = user.username if user else ""
+
     user = authenticate(request, username=username, password=password)
+
     if user is None:
-        messages.error(request, "อีเมล/ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง")
+        cache.add(cache_key, 0, timeout=60)
+        cache.incr(cache_key)
+        messages.error(
+            request,
+            "อีเมล/ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง"
+        )
         return redirect("home")
+
+    cache.delete(cache_key)
     login(request, user)
     return redirect("home")
+
 
 
 def register_view(request):

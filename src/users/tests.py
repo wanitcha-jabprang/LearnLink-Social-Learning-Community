@@ -1,3 +1,4 @@
+from django.core.cache import cache
 import tempfile
 from io import BytesIO
 
@@ -69,6 +70,32 @@ class AuthenticationFlowTests(TestCase):
         self.assertEqual(self.client.get(reverse("logout")).status_code, 405)
         self.assertRedirects(self.client.post(reverse("logout")), reverse("home"))
         self.assertNotIn("_auth_user_id", self.client.session)
+
+    def test_login_blocks_after_five_failed_attempts(self):
+        cache.clear()
+
+        login_url = reverse("login")
+        login_data = {
+            "identifier": "unknown-user",
+            "password": "wrong-password",
+        }
+
+        for _ in range(5):
+            response = self.client.post(login_url, login_data)
+            self.assertRedirects(response, reverse("home"))
+
+        cache_key = "login_failed:127.0.0.1"
+        self.assertEqual(cache.get(cache_key), 5)
+
+        # ครั้งที่ 6 ต้องถูกปฏิเสธ
+        response = self.client.post(login_url, login_data)
+        self.assertRedirects(response, reverse("home"))
+
+        # ตัวนับต้องยังคงเป็น 5
+        self.assertEqual(cache.get(cache_key), 5)
+
+        cache.clear()
+
 
     def test_profile_can_update_username_and_upload_profile_image(self):
         user = User.objects.create_user(
