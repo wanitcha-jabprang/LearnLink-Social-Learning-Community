@@ -237,6 +237,52 @@ class AuthenticationFlowTests(TestCase):
 
         self.assertIsNone(validate_image(image))
 
+    def test_image_validation_accepts_only_supported_formats(self):
+        for image_format in ("JPEG", "PNG", "WEBP"):
+            with self.subTest(image_format=image_format):
+                image_file = BytesIO()
+                Image.new("RGB", (2, 2), color="blue").save(
+                    image_file,
+                    format=image_format,
+                )
+                image = SimpleUploadedFile(
+                    f"valid.{image_format.lower()}",
+                    image_file.getvalue(),
+                    content_type=f"image/{image_format.lower()}",
+                )
+
+                self.assertIsNone(validate_image(image))
+
+        image_file = BytesIO()
+        Image.new("RGB", (2, 2), color="blue").save(image_file, format="GIF")
+        unsupported_image = SimpleUploadedFile(
+            "unsupported.gif",
+            image_file.getvalue(),
+            content_type="image/gif",
+        )
+
+        self.assertEqual(
+            validate_image(unsupported_image),
+            "รองรับเฉพาะไฟล์รูปภาพ JPEG, PNG และ WEBP",
+        )
+
+    def test_image_validation_rejects_decompression_bomb_warning(self):
+        image_file = BytesIO()
+        Image.new("RGB", (10, 10), color="blue").save(
+            image_file,
+            format="PNG",
+        )
+        image = SimpleUploadedFile(
+            "large-dimensions.png",
+            image_file.getvalue(),
+            content_type="image/png",
+        )
+
+        with patch.object(Image, "MAX_IMAGE_PIXELS", 50):
+            error = validate_image(image)
+
+        self.assertEqual(error, "รูปภาพมีขนาดพิกเซลเกินกำหนด")
+
     def test_shared_image_validation_rejects_oversized_uploads(self):
         class OversizedUpload:
             size = MAX_IMAGE_SIZE + 1

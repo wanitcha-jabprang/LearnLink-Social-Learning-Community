@@ -1,7 +1,11 @@
+import tempfile
+from io import BytesIO
 from unittest.mock import patch
 
-from django.test import TestCase
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import TestCase, override_settings
 from django.urls import reverse
+from PIL import Image
 
 from community.infrastructure.container import get_community_service
 from community.infrastructure.persistence.models import (
@@ -141,6 +145,104 @@ class CommunityWorkflowTests(TestCase):
                     image=object(),
                     is_private=False,
                     owner=self.owner,
+                )
+
+    def test_create_community_with_valid_image(self):
+        image_file = BytesIO()
+        Image.new("RGB", (4, 4), color="blue").save(
+            image_file,
+            format="PNG",
+        )
+        image = SimpleUploadedFile(
+            "community.png",
+            image_file.getvalue(),
+            content_type="image/png",
+        )
+
+        with tempfile.TemporaryDirectory() as media_root:
+            with override_settings(MEDIA_ROOT=media_root):
+                community = get_community_service().create(
+                    name="ชุมชนพร้อมภาพ",
+                    description="",
+                    image=image,
+                    is_private=False,
+                    owner=self.owner,
+                )
+
+                self.assertTrue(community.image.name.endswith(".png"))
+                self.assertTrue(
+                    community.image.storage.exists(community.image.name)
+                )
+
+    def test_create_community_without_image(self):
+        community = get_community_service().create(
+            name="ชุมชนไม่มีภาพ",
+            description="",
+            image=None,
+            is_private=False,
+            owner=self.owner,
+        )
+
+        self.assertFalse(community.image)
+
+    def test_create_community_rejects_corrupted_image(self):
+        image = SimpleUploadedFile(
+            "corrupted.png",
+            b"not a valid image",
+            content_type="image/png",
+        )
+
+        with self.assertRaisesRegex(ValueError, "ไฟล์รูปภาพไม่ถูกต้อง"):
+            get_community_service().create(
+                name="ชุมชนรูปเสีย",
+                description="",
+                image=image,
+                is_private=False,
+                owner=self.owner,
+            )
+
+        self.assertFalse(Community.objects.filter(name="ชุมชนรูปเสีย").exists())
+
+    def test_update_without_new_image_preserves_existing_image(self):
+        image_file = BytesIO()
+        Image.new("RGB", (4, 4), color="green").save(
+            image_file,
+            format="PNG",
+        )
+        image = SimpleUploadedFile(
+            "existing.png",
+            image_file.getvalue(),
+            content_type="image/png",
+        )
+
+        with tempfile.TemporaryDirectory() as media_root:
+            with override_settings(MEDIA_ROOT=media_root):
+                community = Community.objects.create(
+                    name="ชุมชนเดิม",
+                    description="รายละเอียดเดิม",
+                    invite_code="COMMUNITY",
+                    owner=self.owner,
+                    image=image,
+                )
+                original_image_name = community.image.name
+
+                updated_community = get_community_service().update(
+                    community.pk,
+                    self.owner,
+                    name="ชื่อใหม่",
+                    description="คำอธิบายใหม่",
+                    image=None,
+                    is_private=False,
+                )
+                updated_community.refresh_from_db()
+
+                self.assertEqual(updated_community.name, "ชื่อใหม่")
+                self.assertEqual(updated_community.description, "คำอธิบายใหม่")
+                self.assertEqual(
+                    updated_community.image.name, original_image_name
+                )
+                self.assertTrue(
+                    updated_community.image.storage.exists(original_image_name)
                 )
 
     def test_community_hub_is_rendered_from_database(self):
