@@ -37,14 +37,19 @@ class CommunityService:
         policies.validate_name(community.name)
         community.description = description
         community.is_private = is_private
+        fields = ["name", "description", "is_private"]
         if image:
             community.image = image
-        self.communities.save(community)
+            fields.append("image")
+        self.communities.save(community, fields=fields)
         return community
 
     def join(self, community_id, user, invite_code=""):
         community = self.get(community_id)
-        if community.is_private and invite_code.strip().upper() != community.invite_code:
+        if (
+            community.is_private
+            and (invite_code or "").strip().upper() != community.invite_code
+        ):
             raise ValueError("รหัสเชิญไม่ถูกต้อง")
         self.memberships.join(community, user)
         return community
@@ -73,6 +78,7 @@ class CommunityService:
         self.communities.delete(community)
         return name
 
+    @transaction.atomic
     def transfer_ownership(self, community_id, actor, new_owner_id):
         community = self.get(community_id)
         if not policies.is_owner(community.owner_id, actor.pk):
@@ -83,7 +89,7 @@ class CommunityService:
         if not self.memberships.has_member(community, new_owner):
             raise ValueError("ไม่สามารถโอนสิทธิ์ได้ ผู้ใช้คนนี้ไม่ได้เป็นสมาชิกในกลุ่ม")
         community.owner = new_owner
-        self.communities.save(community)
+        self.communities.save(community, fields=["owner"])
         return community
 
     def remove_member(self, community_id, actor, member_id):
