@@ -1,6 +1,7 @@
 from django.db import transaction
 
 from community.domain import policies
+from common.infrastructure.storage.upload_validation import reencode_image
 
 
 class CommunityService:
@@ -16,6 +17,8 @@ class CommunityService:
         image_error = self.image_validation.validate_image(image)
         if image_error:
             raise ValueError(image_error)
+        if image:
+            image = reencode_image(image)
         community = self.communities.create(
             name=name,
             description=description,
@@ -48,6 +51,7 @@ class CommunityService:
         community.is_private = is_private
         fields = ["name", "description", "is_private"]
         if image:
+            image = reencode_image(image)
             community.image = image
             fields.append("image")
         self.communities.save(community, fields=fields)

@@ -1,4 +1,6 @@
+
 from post.domain import policies
+from common.infrastructure.storage.upload_validation import reencode_image
 
 
 class PostAccessService:
@@ -47,11 +49,16 @@ class PostService:
         self, user, *, content, image=None, video=None, community_id=None
     ):
         content = policies.normalize_content(content)
+
         error = self.upload_validation.validate_image(
             image
         ) or self.upload_validation.validate_video(video)
+
         if error:
             raise ValueError(error)
+
+        if image:
+            image = reencode_image(image)
 
         community = None
         if community_id:
@@ -59,6 +66,7 @@ class PostService:
             if community is None:
                 raise LookupError("ไม่พบชุมชนนี้")
             self.access.require_community_membership(user, community)
+
         return self.posts.create(
             user=user,
             content=content,

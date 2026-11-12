@@ -1,3 +1,4 @@
+
 FROM python:3.13-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1
@@ -21,6 +22,9 @@ COPY . .
 WORKDIR /app/src
 
 COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+
+# แปลง Windows CRLF เป็น Linux LF และกำหนดสิทธิ์ execute
+RUN sed -i 's/\r$//' /entrypoint.sh \
+    && chmod +x /entrypoint.sh
 
 ENTRYPOINT ["/entrypoint.sh"]

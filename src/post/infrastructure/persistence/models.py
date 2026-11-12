@@ -12,12 +12,53 @@ from .validators import (
 )
 
 
+def _safe_upload_path(content_type):
+    extensions = {
+        "image/jpeg": "jpg",
+        "image/png": "png",
+        "image/webp": "webp",
+        "video/mp4": "mp4",
+        "video/webm": "webm",
+    }
+
+    extension = extensions.get(content_type)
+
+    if extension is None:
+        raise ValueError("??????????????????????")
+
+    return os.path.join("posts", f"{uuid.uuid4()}.{extension}")
+
+
+def upload_post_image(instance, filename):
+    uploaded_file = instance.image.file
+    content_type = getattr(uploaded_file, "content_type", None)
+
+    return _safe_upload_path(content_type)
+
+
+def upload_post_video(instance, filename):
+    uploaded_file = instance.video.file
+    content_type = getattr(uploaded_file, "content_type", None)
+
+    return _safe_upload_path(content_type)
+
 def upload_post_file(instance, filename):
-    ext = filename.split(".")[-1]
-    return os.path.join(
-        "posts",
-        f"{uuid.uuid4()}.{ext}"
-    )
+    """?????? Migration ?????????????? upload_post_file"""
+    for field_name in ("image", "video"):
+        field = getattr(instance, field_name, None)
+        if not field:
+            continue
+
+        try:
+            uploaded_file = field.file
+        except (AttributeError, ValueError):
+            continue
+
+        content_type = getattr(uploaded_file, "content_type", None)
+        if content_type:
+            return _safe_upload_path(content_type)
+
+    raise ValueError("????????????????????????????????????")
 
 
 class Post(TimestampedModel):
@@ -30,14 +71,14 @@ class Post(TimestampedModel):
     content = models.TextField()
 
     image = models.ImageField(
-        upload_to=upload_post_file,
+        upload_to=upload_post_image,
         validators=[validate_image_mime],
         blank=True,
         null=True
     )
 
     video = models.FileField(
-        upload_to=upload_post_file,
+        upload_to=upload_post_video,
         validators=[validate_video_mime],
         blank=True,
         null=True
