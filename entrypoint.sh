@@ -2,10 +2,8 @@
 set -e
 
 echo "Waiting for database to be ready..."
-python -c '
+python manage.py shell -c '
 import time, sys
-import django
-django.setup()
 from django.db import connections
 from django.db.utils import OperationalError
 
@@ -23,7 +21,6 @@ sys.exit(1)
 
 python manage.py migrate --noinput
 python manage.py createcachetable
-
-python manage.py collectstatic --noinput || true
+python manage.py collectstatic --noinput
 
 exec "$@"
