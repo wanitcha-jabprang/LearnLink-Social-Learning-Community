@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ตั้งค่า MFA - LearnLink</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 40px auto;
+            padding: 20px;
+            line-height: 1.6;
+            background: #f5f6fa;
+            color: #222;
+        }
+
+        .container {
+            background: white;
+            padding: 28px;
+            border-radius: 12px;
+            text-align: center;
+        }
+
+        .qr-code {
+            width: 220px;
+            max-width: 100%;
+            margin: 20px auto;
+        }
+
+        .secret {
+            overflow-wrap: anywhere;
+            padding: 12px;
+            background: #f0f0f0;
+            border-radius: 6px;
+            font-weight: bold;
+        }
+
+        input {
+            box-sizing: border-box;
+            width: 100%;
+            padding: 12px;
+            margin: 12px 0;
+            font-size: 18px;
+            text-align: center;
+            letter-spacing: 5px;
+        }
+
+        button {
+            padding: 12px 24px;
+            border: 0;
+            border-radius: 6px;
+            background: #2563eb;
+            color: white;
+            cursor: pointer;
+            font-size: 16px;
+        }
+
+        .message {
+            margin: 10px 0;
+            padding: 10px;
+            background: #fff3cd;
+            border-radius: 6px;
+        }
+    </style>
+</head>
+<body>
+    <main class="container">
+        <h1>ตั้งค่าการยืนยันตัวตนสองขั้นตอน (MFA)</h1>
+
+        <p>
+            เปิดแอป Authenticator เช่น Google Authenticator
+            หรือ Microsoft Authenticator แล้วสแกน QR Code ด้านล่าง
+        </p>
+
+        <img
+            class="qr-code"
+            src="{{ qr_code_data_uri }}"
+            alt="QR Code สำหรับตั้งค่า MFA"
+        >
+
+        <p>หากสแกน QR Code ไม่ได้ สามารถกรอกรหัสนี้ด้วยตนเอง:</p>
+
+        <div class="secret">{{ secret }}</div>
+
+        <p>
+            หลังเพิ่มบัญชีในแอปแล้ว ให้นำรหัส OTP 6 หลัก
+            มากรอกเพื่อยืนยันการเปิดใช้งาน MFA
+        </p>
+
+        {% if messages %}
+            {% for message in messages %}
+                <div class="message">{{ message }}</div>
+            {% endfor %}
+        {% endif %}
+
+        <form method="post">
+            {% csrf_token %}
+
+            <label for="otp">รหัส OTP 6 หลัก</label>
+
+            <input
+                type="text"
+                id="otp"
+                name="otp"
+                inputmode="numeric"
+                pattern="[0-9]{6}"
+                maxlength="6"
+                minlength="6"
+                autocomplete="one-time-code"
+                placeholder="กรอกรหัส OTP"
+                required
+            >
+
+            <button type="submit">ยืนยันและเปิดใช้งาน MFA</button>
+        </form>
+
+        <p>
+            <a href="{% url 'home' %}">กลับหน้าหลัก</a>
+        </p>
+    </main>
+</body>
+</html>

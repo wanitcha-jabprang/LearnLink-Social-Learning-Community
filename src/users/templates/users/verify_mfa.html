@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>&#3618;&#3639;&#3609;&#3618;&#3633;&#3609;&#3605;&#3633;&#3623;&#3605;&#3609; MFA | LearnLink</title>
+</head>
+<body>
+    <main>
+        <h1>&#3618;&#3639;&#3609;&#3618;&#3633;&#3609;&#3605;&#3633;&#3623;&#3605;&#3609;&#3626;&#3629;&#3591;&#3586;&#3633;&#3657;&#3609;&#3605;&#3629;&#3609;</h1>
+        <p>&#3585;&#3619;&#3640;&#3603;&#3634;&#3585;&#3619;&#3629;&#3585;&#3619;&#3627;&#3633;&#3626; OTP 6 &#3627;&#3621;&#3633;&#3585;&#3592;&#3634;&#3585;&#3649;&#3629;&#3611; Authenticator</p>
+
+        {% if messages %}
+            {% for message in messages %}
+                <p>{{ message }}</p>
+            {% endfor %}
+        {% endif %}
+
+        <form method="POST">
+            {% csrf_token %}
+            <label for="otp">&#3619;&#3627;&#3633;&#3626; OTP</label>
+            <input type="text" id="otp" name="otp"
+                   inputmode="numeric" pattern="[0-9]{6}"
+                   maxlength="6" minlength="6"
+                   autocomplete="one-time-code" required>
+            <button type="submit">&#3618;&#3639;&#3609;&#3618;&#3633;&#3609; OTP</button>
+        </form>
+    </main>
+</body>
+</html>

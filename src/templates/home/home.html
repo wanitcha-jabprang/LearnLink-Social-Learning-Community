@@ -156,7 +156,15 @@
                         </div>
                         <div class="profile-account-actions">
                             <a class="button-secondary profile-edit" href="#profile-edit">แก้ไขโปรไฟล์</a>
-                            <form class="profile-logout-form" action="{% url 'logout' %}" method="post">{% csrf_token %}<button class="button-secondary profile-logout" type="submit">ออกจากระบบ</button></form>
+                            {% if not request.user.mfa_enabled %}
+                                <a class="button-secondary" href="{% url 'setup_mfa' %}">ตั้งค่า MFA</a>
+                            {% else %}
+                                <span class="button-secondary">เปิดใช้งาน MFA แล้ว</span>
+                            {% endif %}
+                            <form class="profile-logout-form" action="{% url 'logout' %}" method="post">
+                                {% csrf_token %}
+                                <button class="button-secondary profile-logout" type="submit">ออกจากระบบ</button>
+                            </form>
                             <details class="account-delete-confirm">
                                 <summary class="button-danger account-delete-trigger">ลบบัญชี</summary>
                                 <form action="{% url 'delete_account' %}" method="post">

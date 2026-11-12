@@ -17,6 +17,14 @@ class User(AbstractUser, TimestampedModel):
         blank=True,
         null=True,
     )
+    # Multi-Factor Authentication
+    mfa_enabled = models.BooleanField(default=False)
+    mfa_secret_encrypted = models.TextField(blank=True, default="")
+    mfa_last_used_step = models.BigIntegerField(
+        null=True,
+        blank=True,
+        default=None,
+    )
 
     def __str__(self):
         return self.username
@@ -33,3 +41,11 @@ class Follow(TimestampedModel):
 
     class Meta:
         unique_together = ("follower", "following")
+
+class LoginAttempt(models.Model):
+    key = models.CharField(max_length=64, unique=True)
+    attempts = models.PositiveSmallIntegerField(default=0)
+    window_started_at = models.DateTimeField()
+
+    def __str__(self):
+        return f"{self.key}: {self.attempts}"
