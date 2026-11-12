@@ -2,6 +2,7 @@ from functools import wraps
 
 from django.contrib.auth.decorators import login_required
 from django.core.cache import cache
+from django.db.models import Q
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
@@ -58,16 +59,22 @@ def home_view(request):
     return response
 
 
-@rate_limit_feed(max_requests=40, window_seconds=60)
 def explore_view(request):
+    # เรียก home_view โดยตรง ไม่ใส่ @rate_limit_feed ซ้ำ เพื่อไม่ให้นับโควตาเบิ้ล 2 รอบ
     return home_view(request)
 
 
 @login_required
 @require_POST
 def report_post_view(request, post_id):
-    """รับการแจ้ง Report สแปม และ Auto Hide อัตโนมัติเมื่อถึงเกณฑ์"""
-    post = get_object_or_404(Post, pk=post_id)
+    """รับการแจ้ง Report สแปม เฉพาะโพสต์ที่ผู้ใช้มีสิทธิ์มองเห็นเท่านั้น"""
+    visible_posts = (
+        Q(community__isnull=True)
+        | Q(community__is_private=False)
+        | Q(community__communitymember__user=request.user)
+        | Q(community__owner=request.user)
+    )
+    post = get_object_or_404(Post.objects.filter(visible_posts).distinct(), pk=post_id)
     if post.user != request.user:
         SpamReport.objects.get_or_create(
             post=post,
