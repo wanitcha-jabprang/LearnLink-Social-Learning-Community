@@ -30,12 +30,15 @@ SECRET_KEY = os.getenv("SECRET_KEY")
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv("DEBUG") == "True"
 
-CSRF_TRUSTED_ORIGINS = [
-    "https://*.trycloudflare.com",
-]
+import os
 
-ALLOWED_HOSTS = [
-    "*",
+ALLOWED_HOSTS = os.getenv(
+    "ALLOWED_HOSTS",
+    "localhost,127.0.0.1,learnlink-social-learning-community-production.up.railway.app"
+).split(",")
+
+CSRF_TRUSTED_ORIGINS = [
+    "https://learnlink-social-learning-community-production.up.railway.app",
 ]
 
 
