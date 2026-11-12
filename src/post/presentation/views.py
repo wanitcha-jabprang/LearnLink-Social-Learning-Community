@@ -1,13 +1,28 @@
 import json
+import re
 from functools import wraps
 
 from django.contrib import messages
-from django.http import JsonResponse
+from django.http import JsonResponse, HttpResponseForbidden
 from django.shortcuts import redirect
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 
 from post.infrastructure.container import get_post_services
+
+# 🔒 R-07 Spam Filtering Keywords List
+FORBIDDEN_KEYWORDS = [
+    "spam", "gambling", "casino", "scam", "พนัน", "คาสิโน", "สล็อต", "บาคาร่า", "แทงบอล", "หวย", 
+    "ควย", "เหี้ย", "สัส", "เย็ด", "แม่ง", "ระยำ", "มึง", "กู", "อีดอก", "ถ่อย",
+    "fuck", "shit", "bitch", "cunt", "dick"
+]
+
+
+def contains_forbidden_keywords(text):
+    if not text:
+        return False
+    pattern = re.compile("|".join(re.escape(word) for word in FORBIDDEN_KEYWORDS), re.IGNORECASE)
+    return bool(pattern.search(text))
 
 
 def _request_data(request):
@@ -75,12 +90,18 @@ def _service_error(request, error, *, permission_status=403):
 @_require_authentication
 @require_POST
 def create_post(request):
+    content = request.POST.get("content", "")
+
+    # 🔒 R-07 บล็อกการสร้างโพสต์เมื่อพบคำต้องห้าม
+    if contains_forbidden_keywords(content):
+        return _error_response(request, "ข้อความของคุณมีคำต้องห้ามหรือเข้าข่ายสแปม", status=400)
+
     community_id = request.POST.get("community_id", "").strip()
     services = get_post_services()
     try:
         post = services.posts.create(
             request.user,
-            content=request.POST.get("content", ""),
+            content=content,
             image=request.FILES.get("image"),
             video=request.FILES.get("video"),
             community_id=community_id or None,
@@ -107,10 +128,17 @@ def edit_post(request, post_id):
     data = _request_data(request)
     if not isinstance(data, dict) and not hasattr(data, "get"):
         return _error_response(request, "ข้อมูลที่ส่งมาไม่ถูกต้อง")
+    
+    content = data.get("content", "")
+
+    # 🔒 R-07 บล็อกการแก้ไขโพสต์เมื่อพบคำต้องห้าม
+    if contains_forbidden_keywords(content):
+        return _error_response(request, "ข้อความของคุณมีคำต้องห้ามหรือเข้าข่ายสแปม", status=400)
+
     services = get_post_services()
     try:
         post = services.posts.edit(
-            post_id, request.user, data.get("content", "")
+            post_id, request.user, content
         )
     except (ValueError, PermissionError, LookupError) as error:
         return _service_error(request, error)
@@ -147,12 +175,19 @@ def create_comment(request, post_id):
     data = _request_data(request)
     if not isinstance(data, dict) and not hasattr(data, "get"):
         return _error_response(request, "ข้อมูลที่ส่งมาไม่ถูกต้อง")
+    
+    content = data.get("content", "")
+
+    # 🔒 R-07 บล็อกการสร้างความคิดเห็นเมื่อพบคำต้องห้าม
+    if contains_forbidden_keywords(content):
+        return _error_response(request, "ข้อความของคุณมีคำต้องห้ามหรือเข้าข่ายสแปม", status=400)
+
     services = get_post_services()
     try:
         comment, post = services.comments.create(
             post_id,
             request.user,
-            data.get("content", ""),
+            content,
         )
     except (ValueError, PermissionError, LookupError) as error:
         return _service_error(request, error)
@@ -179,12 +214,19 @@ def edit_comment(request, comment_id):
     data = _request_data(request)
     if not isinstance(data, dict) and not hasattr(data, "get"):
         return _error_response(request, "ข้อมูลที่ส่งมาไม่ถูกต้อง")
+    
+    content = data.get("content", "")
+
+    # 🔒 R-07 บล็อกการแก้ไขความคิดเห็นเมื่อพบคำต้องห้าม
+    if contains_forbidden_keywords(content):
+        return _error_response(request, "ข้อความของคุณมีคำต้องห้ามหรือเข้าข่ายสแปม", status=400)
+
     services = get_post_services()
     try:
         comment = services.comments.edit(
             comment_id,
             request.user,
-            data.get("content", ""),
+            content,
         )
     except (ValueError, PermissionError, LookupError) as error:
         return _service_error(request, error)

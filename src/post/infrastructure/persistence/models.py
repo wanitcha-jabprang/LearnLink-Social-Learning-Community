@@ -43,6 +43,9 @@ class Post(TimestampedModel):
         null=True
     )
 
+    # 🔒 R-07: สถานะซ่อนโพสต์อัตโนมัติเมื่อโดนรายงานสแปมครบเกณฑ์
+    is_hidden = models.BooleanField(default=False)
+
     def __str__(self):
         return self.content[:30]
 

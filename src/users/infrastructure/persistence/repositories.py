@@ -67,7 +67,7 @@ class FollowRepository:
 
 class UserProfileRepository:
     def visible_posts(self, profile_user, viewer):
-        posts = Post.objects.filter(user=profile_user).filter(
+        posts = Post.objects.filter(user=profile_user, is_hidden=False).filter(
             Q(community__isnull=True)
             | Q(community__is_private=False)
             | Q(community__communitymember__user=viewer)
