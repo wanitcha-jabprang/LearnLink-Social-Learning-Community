@@ -1,7 +1,23 @@
+
+import bleach
+
+
 def normalize_content(value, label="โพสต์"):
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"กรุณาเขียน{label}ก่อน")
-    return value.strip()
+
+    sanitized_content = bleach.clean(
+        value.strip(),
+        tags=[],
+        attributes={},
+        protocols=[],
+        strip=True,
+    )
+
+    if not sanitized_content.strip():
+        raise ValueError(f"กรุณาเขียน{label}ก่อน")
+
+    return sanitized_content.strip()
 
 
 def can_access(*, authenticated, community_id, is_owner, is_member):
