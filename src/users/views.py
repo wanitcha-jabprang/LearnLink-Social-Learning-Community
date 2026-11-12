@@ -1,6 +1,7 @@
 import hashlib
 import base64
 import hmac
+import logging
 from io import BytesIO
 from datetime import timedelta
 
@@ -27,6 +28,9 @@ from post.infrastructure.persistence.models import Post
 from users.infrastructure.persistence.models import Follow, LoginAttempt, User
 from users.presentation.forms import ProfileCoverForm, UserProfileForm
 from users.security import decrypt_mfa_secret, encrypt_mfa_secret
+
+logger = logging.getLogger(__name__)
+
 
 def reserve_login_attempt(key):
     now = timezone.now()
@@ -274,7 +278,11 @@ def mfa_setup_view(request):
     if request.method == "POST":
         try:
             reserved = reserve_mfa_attempt(cache_key)
-        except Exception:
+        except Exception as error:
+            logger.error(
+                "MFA enrollment rate-limit backend failed (%s)",
+                type(error).__name__,
+            )
             messages.error(request, "ระบบยืนยันตัวตนขัดข้อง กรุณาลองใหม่ภายหลัง")
             return redirect("setup_mfa")
 
