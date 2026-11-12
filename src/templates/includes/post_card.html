@@ -3,9 +3,8 @@
 
         <!-- รูปโปรไฟล์เจ้าของโพสต์ กดเข้าโปรไฟล์ได้ -->
         <a href="{% url 'user_profile' post.user_id %}"
-           class="avatar"
-           aria-label="ดูโปรไฟล์ของ {{ post.user.username }}"
-           style="text-decoration: none; cursor: pointer;">
+           class="avatar post-author-link"
+           aria-label="ดูโปรไฟล์ของ {{ post.user.username }}">
             {% if post.user.profile_image %}
                 <img src="{{ post.user.profile_image.url }}" alt="">
             {% else %}
@@ -14,10 +13,9 @@
         </a>
 
         <!-- ชื่อและข้อมูลเจ้าของโพสต์ -->
-
         <div class="post-author">
             <a href="{% url 'user_profile' post.user_id %}"
-               style="text-decoration: none; color: inherit; cursor: pointer;">
+               class="post-author-link">
                 <strong>{{ post.user.full_name|default:post.user.username }}</strong>
             </a>
 

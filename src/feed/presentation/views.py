@@ -13,7 +13,7 @@ from post.infrastructure.persistence.models import Post
 
 
 def rate_limit_feed(max_requests=40, window_seconds=60):
-    """จำกัดความถี่การเรียก Feed/Search ป้องกัน Bot และ API Abuse"""
+    """จำกัดความถี่การเรียก Feed/Search แบบ Atomic ป้องกัน Race Condition และ API Abuse"""
 
     def decorator(view_func):
         @wraps(view_func)
@@ -27,13 +27,21 @@ def rate_limit_feed(max_requests=40, window_seconds=60):
             limit = 15 if is_search else max_requests
             cache_key = f"rl_feed_{'search' if is_search else 'view'}_{ident}"
 
-            count = cache.get(cache_key, 0)
-            if count >= limit:
+            # ใช้ cache.add และ cache.incr เพื่อให้การนับเป็น Atomic ปลอดภัยต่อ Multi-worker
+            if cache.add(cache_key, 1, timeout=window_seconds):
+                count = 1
+            else:
+                try:
+                    count = cache.incr(cache_key)
+                except ValueError:
+                    cache.set(cache_key, 1, timeout=window_seconds)
+                    count = 1
+
+            if count > limit:
                 return HttpResponse(
                     "Too Many Requests: กรุณารอสักครู่แล้วลองใหม่อีกครั้ง",
                     status=429,
                 )
-            cache.set(cache_key, count + 1, timeout=window_seconds)
             return view_func(request, *args, **kwargs)
 
         return _wrapped_view
