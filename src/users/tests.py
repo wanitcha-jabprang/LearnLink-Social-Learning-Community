@@ -407,7 +407,6 @@ from django.utils import timezone
 import pyotp
 from cryptography.fernet import Fernet
 from django.contrib import admin
-from django.core.cache import cache
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 from django.urls import reverse
@@ -886,63 +885,8 @@ class MFAEncryptionTests(TestCase):
                 encrypt_mfa_secret("JBSWY3DPEHPK3PXP")
 
 
-class FakeRedis:
-    """
-    Simple in-memory Redis substitute for MFA unit tests.
-    """
-
-    def __init__(self):
-        self.values = {}
-
-    def get(self, key):
-        return self.values.get(key)
-
-    def register_script(self, script):
-        def execute(keys, args=None, client=None):
-            key = keys[0]
-            args = args or []
-
-            # Reserve MFA attempt
-            if "INCR" in script:
-                max_attempts = int(args[0])
-                current = int(self.values.get(key, 0))
-
-                if current >= max_attempts:
-                    return 0
-
-                current += 1
-                self.values[key] = current
-                return current
-
-            # Release MFA attempt
-            if "DECR" in script:
-                current = int(self.values.get(key, 0))
-
-                if current <= 1:
-                    self.values.pop(key, None)
-                    return 1
-
-                self.values[key] = current - 1
-                return current - 1
-
-            raise NotImplementedError("Unknown Redis script")
-
-        return execute
-
 class MFAVerificationTests(TestCase):
     def setUp(self):
-        cache.clear()
-
-        # Create a fresh Fake Redis for each test.
-        self.fake_redis = FakeRedis()
-
-        self.redis_patcher = patch(
-            "users.views.get_mfa_redis_client",
-            return_value=self.fake_redis,
-        )
-        self.redis_patcher.start()
-        self.addCleanup(self.redis_patcher.stop)
-
         self.encryption_key = Fernet.generate_key().decode("utf-8")
         self.secret = "JBSWY3DPEHPK3PXP"
 
@@ -1158,16 +1102,6 @@ class MFAVerificationTests(TestCase):
 
 class MFAEnrollmentTests(TestCase):
     def setUp(self):
-        cache.clear()
-
-        self.fake_redis = FakeRedis()
-        self.redis_patcher = patch(
-            "users.views.get_mfa_redis_client",
-            return_value=self.fake_redis,
-        )
-        self.redis_patcher.start()
-        self.addCleanup(self.redis_patcher.stop)
-
         self.encryption_key = Fernet.generate_key().decode("utf-8")
 
         self.user = User.objects.create_user(

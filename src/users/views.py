@@ -9,8 +9,6 @@ import qrcode
 import pyotp
 from django.contrib.auth import authenticate, login, logout
 from django.contrib import messages
-from django.core.cache import caches
-from django.core.cache.backends.redis import RedisCache
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.password_validation import validate_password
 from django.db import transaction
@@ -80,87 +78,56 @@ def release_login_attempt(key):
             attempt.save(update_fields=["attempts"])
 
 
-def get_mfa_redis_client():
-    """
-    Return the Redis client configured by Django.
-    """
-    backend = caches["default"]
-    if not isinstance(backend, RedisCache):
-        raise ImproperlyConfigured(
-            "The default cache backend must be RedisCache for MFA."
-        )
-    return backend._cache.get_client(write=True)
+def get_mfa_attempt_key(key):
+    return hashlib.sha256(f"mfa:{key}".encode("utf-8")).hexdigest()
 
 
 def get_mfa_attempts(key):
-    """
-    Read the MFA attempt counter from the same Redis key.
-    """
-    redis_client = get_mfa_redis_client()
-    value = redis_client.get(key)
-
-    if value is None:
+    attempt = LoginAttempt.objects.filter(
+        key=get_mfa_attempt_key(key)
+    ).first()
+    if not attempt or timezone.now() - attempt.window_started_at >= timedelta(
+        seconds=300
+    ):
         return 0
-
-    return int(value)
+    return attempt.attempts
 
 
 def reserve_mfa_attempt(key):
-    """
-    Atomically reserve an OTP attempt.
-    Maximum 5 attempts within 300 seconds.
-    """
-    redis_client = get_mfa_redis_client()
-
-    reserve_script = redis_client.register_script(
-        """
-        local current = tonumber(redis.call('GET', KEYS[1]) or '0')
-
-        if current >= tonumber(ARGV[1]) then
-            return 0
-        end
-
-        local count = redis.call('INCR', KEYS[1])
-
-        if count == 1 then
-            redis.call('EXPIRE', KEYS[1], tonumber(ARGV[2]))
-        end
-
-        return count
-        """
+    attempt_key = get_mfa_attempt_key(key)
+    now = timezone.now()
+    LoginAttempt.objects.get_or_create(
+        key=attempt_key,
+        defaults={
+            "attempts": 0,
+            "window_started_at": now,
+        },
     )
 
-    result = reserve_script(
-        keys=[key],
-        args=[5, 300],
-        client=redis_client,
-    )
+    with transaction.atomic():
+        attempt = LoginAttempt.objects.select_for_update().get(
+            key=attempt_key
+        )
+        now = timezone.now()
+        if now - attempt.window_started_at >= timedelta(seconds=300):
+            attempt.attempts = 0
+            attempt.window_started_at = now
 
-    return bool(result)
+        if attempt.attempts >= 5:
+            return False
 
+        attempt.attempts += 1
+        attempt.save(update_fields=["attempts", "window_started_at"])
+        return True
 
 def release_mfa_attempt(key):
-    """
-    Release one reserved OTP attempt.
-    """
-    redis_client = get_mfa_redis_client()
-
-    release_script = redis_client.register_script(
-        """
-        local current = tonumber(redis.call('GET', KEYS[1]) or '0')
-
-        if current <= 1 then
-            return redis.call('DEL', KEYS[1])
-        end
-
-        return redis.call('DECR', KEYS[1])
-        """
-    )
-
-    release_script(
-        keys=[key],
-        client=redis_client,
-    )
+    with transaction.atomic():
+        attempt = LoginAttempt.objects.select_for_update().filter(
+            key=get_mfa_attempt_key(key)
+        ).first()
+        if attempt and attempt.attempts:
+            attempt.attempts -= 1
+            attempt.save(update_fields=["attempts"])
 
 
 
@@ -286,7 +253,7 @@ def mfa_setup_view(request):
             reserved = reserve_mfa_attempt(cache_key)
         except Exception as error:
             logger.error(
-                "MFA enrollment rate-limit backend failed (%s)",
+                "MFA enrollment attempt counter failed (%s)",
                 type(error).__name__,
             )
             messages.error(request, "ระบบยืนยันตัวตนขัดข้อง กรุณาลองใหม่ภายหลัง")
