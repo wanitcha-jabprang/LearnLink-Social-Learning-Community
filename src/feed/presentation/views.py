@@ -1,4 +1,6 @@
+from datetime import timedelta
 from functools import wraps
+import random
 
 from django.contrib.auth.decorators import login_required
 from django.db import IntegrityError, transaction
@@ -12,9 +14,18 @@ from feed.infrastructure.container import get_feed_service
 from feed.infrastructure.persistence.models import RateLimitBucket, SpamReport
 from post.infrastructure.persistence.models import Post
 
+BUCKET_RETENTION_SECONDS = 3600
+
+
+def cleanup_expired_rate_limit_buckets(retention_seconds: int = BUCKET_RETENTION_SECONDS) -> int:
+    """ลบ RateLimitBucket ที่หมดอายุเกินระยะเวลาที่กำหนดเพื่อป้องกันตารางโตไม่สิ้นสุด"""
+    cutoff = timezone.now() - timedelta(seconds=retention_seconds)
+    deleted_count, _ = RateLimitBucket.objects.filter(window_start__lt=cutoff).delete()
+    return deleted_count
+
 
 def _increment_rate_limit(key: str, window_seconds: int) -> int:
-    """เพิ่มตัวนับแบบ Atomic บนฐานข้อมูลด้วย SQL UPDATE (count = count + 1)"""
+    """เพิ่มตัวนับแบบ Atomic และรีเซ็ตเป็น 1 ทันทีเมื่อเปลี่ยนหน้าต่างเวลา"""
     now = timezone.now()
     window_start = now.replace(
         second=(now.second // window_seconds) * window_seconds
@@ -28,28 +39,38 @@ def _increment_rate_limit(key: str, window_seconds: int) -> int:
             minute=(now.minute // minutes) * minutes
         )
 
-    with transaction.atomic():
-        updated = RateLimitBucket.objects.filter(
-            key=key, window_start=window_start
-        ).update(count=F("count") + 1)
-        if updated:
-            return RateLimitBucket.objects.values_list(
-                "count", flat=True
-            ).get(key=key)
+    # สุ่มล้าง bucket ที่หมดอายุ (~2% ของ request) เพื่อไม่ให้กระทบ latency ทุกครั้งและกันตารางโตไม่สิ้นสุด
+    if random.random() < 0.02:
+        cleanup_expired_rate_limit_buckets()
 
-        try:
-            with transaction.atomic():
-                RateLimitBucket.objects.create(
-                    key=key, count=1, window_start=window_start
+    with transaction.atomic():
+        bucket = (
+            RateLimitBucket.objects.select_for_update()
+            .filter(key=key)
+            .first()
+        )
+        if bucket is None:
+            try:
+                with transaction.atomic():
+                    RateLimitBucket.objects.create(
+                        key=key, count=1, window_start=window_start
+                    )
+                    return 1
+            except IntegrityError:
+                bucket = RateLimitBucket.objects.select_for_update().get(
+                    key=key
                 )
-                return 1
-        except IntegrityError:
-            RateLimitBucket.objects.filter(key=key).update(
-                count=F("count") + 1, window_start=window_start
+
+        if bucket.window_start != window_start:
+            RateLimitBucket.objects.filter(pk=bucket.pk).update(
+                count=1, window_start=window_start
             )
-            return RateLimitBucket.objects.values_list(
-                "count", flat=True
-            ).get(key=key)
+            return 1
+
+        RateLimitBucket.objects.filter(pk=bucket.pk).update(
+            count=F("count") + 1
+        )
+        return bucket.count + 1
 
 
 def rate_limit_feed(max_requests=40, window_seconds=60):
