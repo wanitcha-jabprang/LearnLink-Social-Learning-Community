@@ -3,7 +3,11 @@ import hashlib
 import tempfile
 from io import BytesIO
 from unittest.mock import patch
+from datetime import timedelta
+from io import StringIO
 
+from django.core.management import call_command
+from django.utils import timezone
 import pyotp
 from cryptography.fernet import Fernet
 from django.contrib import admin
@@ -17,7 +21,8 @@ from community.models import Community, CommunityMember
 from post.models import Post
 from users.models import LoginAttempt, User
 from users.security import encrypt_mfa_secret, decrypt_mfa_secret
-
+from django.contrib.auth.models import Permission
+from django.test import RequestFactory
 
 class AuthenticationFlowTests(TestCase):
 
@@ -464,10 +469,62 @@ class MFAEncryptionTests(TestCase):
                 encrypt_mfa_secret("JBSWY3DPEHPK3PXP")
 
 
-class MFAVerificationTests(TestCase):
+class FakeRedis:
+    """
+    Simple in-memory Redis substitute for MFA unit tests.
+    """
 
+    def __init__(self):
+        self.values = {}
+
+    def get(self, key):
+        return self.values.get(key)
+
+    def register_script(self, script):
+        def execute(keys, args=None, client=None):
+            key = keys[0]
+            args = args or []
+
+            # Reserve MFA attempt
+            if "INCR" in script:
+                max_attempts = int(args[0])
+                current = int(self.values.get(key, 0))
+
+                if current >= max_attempts:
+                    return 0
+
+                current += 1
+                self.values[key] = current
+                return current
+
+            # Release MFA attempt
+            if "DECR" in script:
+                current = int(self.values.get(key, 0))
+
+                if current <= 1:
+                    self.values.pop(key, None)
+                    return 1
+
+                self.values[key] = current - 1
+                return current - 1
+
+            raise NotImplementedError("Unknown Redis script")
+
+        return execute
+
+class MFAVerificationTests(TestCase):
     def setUp(self):
         cache.clear()
+
+        # Create a fresh Fake Redis for each test.
+        self.fake_redis = FakeRedis()
+
+        self.redis_patcher = patch(
+            "users.views.get_mfa_redis_client",
+            return_value=self.fake_redis,
+        )
+        self.redis_patcher.start()
+        self.addCleanup(self.redis_patcher.stop)
 
         self.encryption_key = Fernet.generate_key().decode("utf-8")
         self.secret = "JBSWY3DPEHPK3PXP"
@@ -486,6 +543,7 @@ class MFAVerificationTests(TestCase):
             mfa_enabled=True,
             mfa_secret_encrypted=encrypted_secret,
         )
+
 
     def set_pending_session(self):
         session = self.client.session
@@ -580,6 +638,7 @@ class MFAVerificationTests(TestCase):
         self.assertNotIn("_auth_user_id", self.client.session)
 
 
+
 class UserAdminSecurityTests(TestCase):
 
     def setUp(self):
@@ -589,22 +648,35 @@ class UserAdminSecurityTests(TestCase):
             is_staff=True,
             is_superuser=False,
         )
+
+        change_user_permission = Permission.objects.get(
+            content_type__app_label="users",
+            codename="change_user",
+        )
+        self.staff_user.user_permissions.add(
+            change_user_permission
+        )
+
         self.superuser = User.objects.create_superuser(
             username="admin_test",
             password="StrongPass123!",
             email="admin@example.com",
         )
+
         self.target_user = User.objects.create_user(
             username="target_test",
             password="StrongPass123!",
         )
 
+        self.factory = RequestFactory()
+
     def test_staff_cannot_edit_privilege_fields(self):
-        self.client.force_login(self.staff_user)
+        request = self.factory.get("/admin/")
+        request.user = self.staff_user
 
         model_admin = admin.site._registry[User]
         readonly_fields = model_admin.get_readonly_fields(
-            self.client.request().wsgi_request,
+            request,
             self.target_user,
         )
 
@@ -612,16 +684,71 @@ class UserAdminSecurityTests(TestCase):
         self.assertIn("is_superuser", readonly_fields)
 
     def test_superuser_can_edit_privilege_fields(self):
-        self.client.force_login(self.superuser)
+        request = self.factory.get("/admin/")
+        request.user = self.superuser
 
         model_admin = admin.site._registry[User]
         readonly_fields = model_admin.get_readonly_fields(
-            self.client.request().wsgi_request,
+            request,
             self.target_user,
         )
 
         self.assertNotIn("is_staff", readonly_fields)
         self.assertNotIn("is_superuser", readonly_fields)
+
+    def test_staff_cannot_see_groups_and_user_permissions(self):
+        request = self.factory.get("/admin/")
+        request.user = self.staff_user
+
+        model_admin = admin.site._registry[User]
+        form_class = model_admin.get_form(
+            request,
+            self.target_user,
+        )
+
+        self.assertNotIn("groups", form_class.base_fields)
+        self.assertNotIn(
+            "user_permissions",
+            form_class.base_fields,
+        )
+
+    def test_staff_cannot_submit_groups_and_user_permissions(self):
+        request = self.factory.post("/admin/")
+        request.user = self.staff_user
+
+        model_admin = admin.site._registry[User]
+        form_class = model_admin.get_form(
+            request,
+            self.target_user,
+        )
+
+        form = form_class(
+            data={
+                "username": self.target_user.username,
+                "groups": [],
+                "user_permissions": [],
+            },
+            instance=self.target_user,
+        )
+
+        self.assertNotIn("groups", form.fields)
+        self.assertNotIn("user_permissions", form.fields)
+
+    def test_superuser_can_see_groups_and_user_permissions(self):
+        request = self.factory.get("/admin/")
+        request.user = self.superuser
+
+        model_admin = admin.site._registry[User]
+        form_class = model_admin.get_form(
+            request,
+            self.target_user,
+        )
+
+        self.assertIn("groups", form_class.base_fields)
+        self.assertIn(
+            "user_permissions",
+            form_class.base_fields,
+        )
 
     def test_profile_edit_cannot_change_privilege_fields(self):
         self.client.force_login(self.target_user)
@@ -646,4 +773,86 @@ class UserAdminSecurityTests(TestCase):
         self.target_user.refresh_from_db()
         self.assertFalse(self.target_user.is_staff)
         self.assertFalse(self.target_user.is_superuser)
-        self.assertEqual(self.target_user.full_name, "Updated Name")
+        self.assertEqual(
+            self.target_user.full_name,
+            "Updated Name",
+        )
+
+class LoginAttemptCleanupTests(TestCase):
+
+    def setUp(self):
+        now = timezone.now()
+
+        self.old_attempt = LoginAttempt.objects.create(
+            key="old-login-attempt",
+            attempts=5,
+            window_started_at=now - timedelta(days=31),
+        )
+
+        self.recent_attempt = LoginAttempt.objects.create(
+            key="recent-login-attempt",
+            attempts=2,
+            window_started_at=now - timedelta(days=1),
+        )
+
+    def test_cleanup_deletes_old_login_attempts(self):
+        output = StringIO()
+
+        call_command(
+            "cleanup_login_attempts",
+            stdout=output,
+        )
+
+        self.assertFalse(
+            LoginAttempt.objects.filter(
+                pk=self.old_attempt.pk
+            ).exists()
+        )
+
+        self.assertTrue(
+            LoginAttempt.objects.filter(
+                pk=self.recent_attempt.pk
+            ).exists()
+        )
+
+    def test_cleanup_supports_custom_days(self):
+        output = StringIO()
+
+        call_command(
+            "cleanup_login_attempts",
+            days=7,
+            stdout=output,
+        )
+
+        self.assertFalse(
+            LoginAttempt.objects.filter(
+                pk=self.old_attempt.pk
+            ).exists()
+        )
+
+        self.assertTrue(
+            LoginAttempt.objects.filter(
+                pk=self.recent_attempt.pk
+            ).exists()
+        )
+
+    def test_cleanup_rejects_invalid_days(self):
+        output = StringIO()
+
+        call_command(
+            "cleanup_login_attempts",
+            days=0,
+            stdout=output,
+        )
+
+        self.assertTrue(
+            LoginAttempt.objects.filter(
+                pk=self.old_attempt.pk
+            ).exists()
+        )
+
+        self.assertTrue(
+            LoginAttempt.objects.filter(
+                pk=self.recent_attempt.pk
+            ).exists()
+        )

@@ -22,7 +22,8 @@ import pyotp
 
 from .security import encrypt_mfa_secret, decrypt_mfa_secret
 
-
+from redis.exceptions import RedisError
+from django.core.cache import cache
 
 def reserve_login_attempt(key):
     now = timezone.now()
@@ -61,6 +62,85 @@ def reserve_login_attempt(key):
         )
 
         return True
+
+
+def get_mfa_redis_client():
+    """
+    Return the Redis client configured by Django.
+    """
+    return cache._cache.get_client(write=True)
+
+
+def get_mfa_attempts(key):
+    """
+    Read the MFA attempt counter from the same Redis key.
+    """
+    redis_client = get_mfa_redis_client()
+    value = redis_client.get(key)
+
+    if value is None:
+        return 0
+
+    return int(value)
+
+
+def reserve_mfa_attempt(key):
+    """
+    Atomically reserve an OTP attempt.
+    Maximum 5 attempts within 300 seconds.
+    """
+    redis_client = get_mfa_redis_client()
+
+    reserve_script = redis_client.register_script(
+        """
+        local current = tonumber(redis.call('GET', KEYS[1]) or '0')
+
+        if current >= tonumber(ARGV[1]) then
+            return 0
+        end
+
+        local count = redis.call('INCR', KEYS[1])
+
+        if count == 1 then
+            redis.call('EXPIRE', KEYS[1], tonumber(ARGV[2]))
+        end
+
+        return count
+        """
+    )
+
+    result = reserve_script(
+        keys=[key],
+        args=[5, 300],
+        client=redis_client,
+    )
+
+    return bool(result)
+
+
+def release_mfa_attempt(key):
+    """
+    Release one reserved OTP attempt.
+    """
+    redis_client = get_mfa_redis_client()
+
+    release_script = redis_client.register_script(
+        """
+        local current = tonumber(redis.call('GET', KEYS[1]) or '0')
+
+        if current <= 1 then
+            return redis.call('DEL', KEYS[1])
+        end
+
+        return redis.call('DECR', KEYS[1])
+        """
+    )
+
+    release_script(
+        keys=[key],
+        client=redis_client,
+    )
+
 
     
 def login_view(request):
@@ -120,6 +200,7 @@ def login_view(request):
 
 
 
+
 def verify_mfa_view(request):
     pending_user_id = request.session.get("mfa_pending_user_id")
 
@@ -138,9 +219,37 @@ def verify_mfa_view(request):
     ip_address = request.META.get("REMOTE_ADDR", "unknown")
     cache_key = f"mfa_failed:{ip_address}:{user.pk}"
 
-    failed_attempts = cache.get(cache_key, 0)
+    if request.method != "POST":
+        try:
+            failed_attempts = get_mfa_attempts(cache_key)
+        except Exception:
+            messages.error(
+                request,
+                "ระบบยืนยันตัวตนขัดข้อง กรุณาลองใหม่ภายหลัง",
+            )
+            return redirect("home")
 
-    if failed_attempts >= 5:
+        if failed_attempts >= 5:
+            request.session.pop("mfa_pending_user_id", None)
+            messages.error(
+                request,
+                "ยืนยัน OTP ไม่สำเร็จเกินจำนวนครั้งที่กำหนด กรุณาเข้าสู่ระบบใหม่",
+            )
+            return redirect("home")
+
+        return render(request, "users/verify_mfa.html")
+
+    # จองสิทธิ์ก่อนตรวจ OTP เพื่อป้องกัน concurrent requests
+    try:
+        reserved = reserve_mfa_attempt(cache_key)
+    except Exception:
+        messages.error(
+            request,
+            "ระบบยืนยันตัวตนขัดข้อง กรุณาลองใหม่ภายหลัง",
+        )
+        return redirect("home")
+
+    if not reserved:
         request.session.pop("mfa_pending_user_id", None)
         messages.error(
             request,
@@ -148,50 +257,64 @@ def verify_mfa_view(request):
         )
         return redirect("home")
 
-    if request.method == "POST":
-        otp = request.POST.get("otp", "").strip()
+    otp = request.POST.get("otp", "").strip()
 
-        # ตรวจสอบ Encryption Key และข้อมูล Secret ก่อนตรวจ OTP
+    try:
+        secret = decrypt_mfa_secret(user.mfa_secret_encrypted)
+    except (ValueError, ImproperlyConfigured):
         try:
-            secret = decrypt_mfa_secret(user.mfa_secret_encrypted)
-        except (ValueError, ImproperlyConfigured):
-            request.session.pop("mfa_pending_user_id", None)
+            release_mfa_attempt(cache_key)
+        except Exception:
+            pass
+
+        request.session.pop("mfa_pending_user_id", None)
+        messages.error(
+            request,
+            "ระบบยืนยันตัวตนขัดข้อง กรุณาติดต่อผู้ดูแลระบบ",
+        )
+        return redirect("home")
+
+    is_valid = (
+        len(otp) == 6
+        and otp.isdigit()
+        and pyotp.TOTP(secret).verify(otp, valid_window=1)
+    )
+
+    if not is_valid:
+        try:
+            failed_attempts = get_mfa_attempts(cache_key)
+        except Exception:
             messages.error(
                 request,
-                "ระบบยืนยันตัวตนขัดข้อง กรุณาติดต่อผู้ดูแลระบบ",
+                "ระบบยืนยันตัวตนขัดข้อง กรุณาลองใหม่ภายหลัง",
             )
             return redirect("home")
 
-        is_valid = (
-            len(otp) == 6
-            and otp.isdigit()
-            and pyotp.TOTP(secret).verify(otp, valid_window=1)
+        if failed_attempts >= 5:
+            request.session.pop("mfa_pending_user_id", None)
+            messages.error(
+                request,
+                "ยืนยัน OTP ไม่สำเร็จครบ 5 ครั้ง กรุณาเข้าสู่ระบบใหม่",
+            )
+            return redirect("home")
+
+        messages.error(request, "รหัส OTP ไม่ถูกต้อง")
+        return render(request, "users/verify_mfa.html")
+
+    # OTP ถูกต้อง คืนสิทธิ์ที่จองไว้
+    try:
+        release_mfa_attempt(cache_key)
+    except Exception:
+        messages.error(
+            request,
+            "ระบบยืนยันตัวตนขัดข้อง กรุณาลองใหม่ภายหลัง",
         )
-
-        if not is_valid:
-            cache.add(cache_key, 0, timeout=300)
-            cache.incr(cache_key)
-
-            failed_attempts = cache.get(cache_key, 0)
-
-            if failed_attempts >= 5:
-                request.session.pop("mfa_pending_user_id", None)
-                messages.error(
-                    request,
-                    "ยืนยัน OTP ไม่สำเร็จครบ 5 ครั้ง กรุณาเข้าสู่ระบบใหม่",
-                )
-                return redirect("home")
-
-            messages.error(request, "รหัส OTP ไม่ถูกต้อง")
-            return render(request, "users/verify_mfa.html")
-
-        cache.delete(cache_key)
-        request.session.pop("mfa_pending_user_id", None)
-
-        login(request, user)
         return redirect("home")
 
-    return render(request, "users/verify_mfa.html")
+    request.session.pop("mfa_pending_user_id", None)
+    login(request, user)
+    return redirect("home")
+
 
 
 def register_view(request):

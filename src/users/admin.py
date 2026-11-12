@@ -20,5 +20,28 @@ class CustomUserAdmin(UserAdmin):
 
         return readonly_fields
 
+    def get_fieldsets(self, request, obj=None):
+        fieldsets = super().get_fieldsets(request, obj)
+
+        if request.user.is_superuser:
+            return fieldsets
+
+        restricted_fields = {"groups", "user_permissions"}
+
+        return [
+            (
+                name,
+                {
+                    **options,
+                    "fields": tuple(
+                        field
+                        for field in options.get("fields", ())
+                        if field not in restricted_fields
+                    ),
+                },
+            )
+            for name, options in fieldsets
+        ]
+
 
 admin.site.register(Follow)
