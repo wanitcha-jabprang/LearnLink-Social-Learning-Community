@@ -3,9 +3,8 @@
 
         <!-- รูปโปรไฟล์เจ้าของโพสต์ กดเข้าโปรไฟล์ได้ -->
         <a href="{% url 'user_profile' post.user_id %}"
-           class="avatar"
-           aria-label="ดูโปรไฟล์ของ {{ post.user.username }}"
-           style="text-decoration: none; cursor: pointer;">
+           class="avatar post-author-link"
+           aria-label="ดูโปรไฟล์ของ {{ post.user.username }}">
             {% if post.user.profile_image %}
                 <img src="{{ post.user.profile_image.url }}" alt="">
             {% else %}
@@ -16,7 +15,7 @@
         <!-- ชื่อและข้อมูลเจ้าของโพสต์ -->
         <div class="post-author">
             <a href="{% url 'user_profile' post.user_id %}"
-               style="text-decoration: none; color: inherit; cursor: pointer;">
+               class="post-author-link">
                 <strong>{{ post.user.full_name|default:post.user.username }}</strong>
             </a>
 
@@ -43,6 +42,15 @@
                 <button class="post-menu post-owner-action-button post-delete-action" type="submit">ลบ</button>
             </form>
         </div>
+        {% elif request.user.is_authenticated %}
+        <div class="post-owner-actions">
+            <details class="post-edit-details">
+                <summary class="post-menu" aria-label="ตัวเลือกโพสต์">···</summary>
+                <form action="{% url 'report_post' post.pk %}" method="post">
+                    {% csrf_token %}
+                    <input type="hidden" name="reason" value="Spam">
+                    <button class="post-menu post-owner-action-button post-delete-action" type="submit">รายงานโพสต์</button>
+                </form>
         {% elif post.community %}
         <!-- 🔒 R-07 เมนูดรอปดาวน์จุดสามจุดลอยลงมา (Dropdown Menu) -->
         <div class="post-owner-actions" style="position: relative;">
@@ -62,6 +70,7 @@
                         </button>
                     </form>
                 </div>
+
             </details>
         </div>
         {% else %}
