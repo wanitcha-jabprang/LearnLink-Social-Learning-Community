@@ -191,6 +191,7 @@ def login_view(request):
         return redirect("home")
 
     release_login_attempt(rate_limit_hash)
+    logout(request)
 
     if user.mfa_enabled:
         if not user.mfa_secret_encrypted:
@@ -200,18 +201,31 @@ def login_view(request):
             )
             return redirect("home")
 
-        logout(request)
         request.session["mfa_pending_user_id"] = user.pk
         request.session.set_expiry(300)
 
         return redirect("verify_mfa")
 
-    login(request, user)
-    return redirect("home")
+    request.session["mfa_enrollment_user_id"] = user.pk
+    request.session.set_expiry(600)
+    return redirect("setup_mfa")
 
-@login_required(login_url="login")
 def mfa_setup_view(request):
-    if request.user.mfa_enabled:
+    enrollment_user_id = request.session.get("mfa_enrollment_user_id")
+    is_password_enrollment = enrollment_user_id is not None
+
+    if enrollment_user_id is not None:
+        user = User.objects.filter(pk=enrollment_user_id).first()
+        if user is None:
+            request.session.pop("mfa_enrollment_user_id", None)
+            messages.error(request, "ไม่พบบัญชีสำหรับตั้งค่า MFA กรุณาเข้าสู่ระบบใหม่")
+            return redirect("home")
+    elif request.user.is_authenticated:
+        user = request.user
+    else:
+        return redirect("home")
+
+    if user.mfa_enabled:
         messages.info(request, "บัญชีนี้เปิดใช้งาน MFA อยู่แล้ว")
         return redirect("home")
 
@@ -233,7 +247,13 @@ def mfa_setup_view(request):
         try:
             secret = pyotp.random_base32()
             encrypted_secret = encrypt_mfa_secret(secret)
-        except (ImproperlyConfigured, ValueError):
+        except ImproperlyConfigured:
+            messages.error(
+                request,
+                "ยังไม่ได้กำหนด MFA_ENCRYPTION_KEY ใน environment",
+            )
+            return redirect("home")
+        except ValueError:
             messages.error(request, "ไม่สามารถเริ่มตั้งค่า MFA ได้ กรุณาติดต่อผู้ดูแลระบบ")
             return redirect("home")
 
@@ -249,7 +269,7 @@ def mfa_setup_view(request):
         return redirect("home")
 
     ip_address = request.META.get("REMOTE_ADDR", "unknown")
-    cache_key = f"mfa_enroll_failed:{ip_address}:{request.user.pk}"
+    cache_key = f"mfa_enroll_failed:{ip_address}:{user.pk}"
 
     if request.method == "POST":
         try:
@@ -263,38 +283,61 @@ def mfa_setup_view(request):
             return redirect("setup_mfa")
 
         otp = request.POST.get("otp", "").strip()
-        is_valid = (
-            len(otp) == 6
-            and otp.isdigit()
-            and pyotp.TOTP(secret).verify(otp, valid_window=1)
-        )
+        totp = pyotp.TOTP(secret)
+        matched_step = None
+        if len(otp) == 6 and otp.isdigit():
+            current_step = totp.timecode(timezone.now())
+            for step in (current_step - 1, current_step, current_step + 1):
+                if step >= 0 and hmac.compare_digest(
+                    totp.at(step * totp.interval), otp
+                ):
+                    matched_step = step
+                    break
 
-        if not is_valid:
+        if matched_step is None:
             messages.error(request, "รหัส OTP ไม่ถูกต้อง")
         else:
             try:
                 release_mfa_attempt(cache_key)
 
                 with transaction.atomic():
-                    user = User.objects.select_for_update().get(
-                        pk=request.user.pk
+                    locked_user = User.objects.select_for_update().get(
+                        pk=user.pk
                     )
 
-                    if user.mfa_enabled:
-                        messages.info(request, "บัญชีนี้เปิดใช้งาน MFA อยู่แล้ว")
+                    if locked_user.mfa_enabled:
+                        if is_password_enrollment:
+                            request.session.pop(secret_key, None)
+                            request.session.pop(started_key, None)
+                            request.session.pop(
+                                "mfa_enrollment_user_id", None
+                            )
+                            request.session["mfa_pending_user_id"] = (
+                                locked_user.pk
+                            )
+                            return redirect("verify_mfa")
+                        messages.info(
+                            request, "บัญชีนี้เปิดใช้งาน MFA อยู่แล้ว"
+                        )
                     else:
-                        user.mfa_secret_encrypted = encrypted_secret
-                        user.mfa_enabled = True
-                        user.save(
+                        locked_user.mfa_secret_encrypted = encrypted_secret
+                        locked_user.mfa_enabled = True
+                        locked_user.mfa_last_used_step = matched_step
+                        locked_user.save(
                             update_fields=[
                                 "mfa_secret_encrypted",
                                 "mfa_enabled",
+                                "mfa_last_used_step",
                             ]
                         )
                         messages.success(request, "เปิดใช้งาน MFA สำเร็จแล้ว")
 
                 request.session.pop(secret_key, None)
                 request.session.pop(started_key, None)
+                request.session.pop("mfa_enrollment_user_id", None)
+                if not request.user.is_authenticated:
+                    request.session.set_expiry(None)
+                    login(request, locked_user)
                 return redirect("home")
 
             except Exception:
@@ -305,7 +348,7 @@ def mfa_setup_view(request):
                 return redirect("setup_mfa")
 
     provisioning_uri = pyotp.TOTP(secret).provisioning_uri(
-        name=request.user.email or request.user.username,
+        name=user.email or user.username,
         issuer_name="LearnLink",
     )
 
@@ -496,6 +539,7 @@ def verify_mfa_view(request):
         return redirect("home")
 
     request.session.pop("mfa_pending_user_id", None)
+    request.session.set_expiry(None)
     login(request, user)
     return redirect("home")
 
@@ -544,8 +588,10 @@ def register_view(request):
 
     user.set_password(password)
     user.save()
-    login(request, user)
-    return redirect("home")
+    logout(request)
+    request.session["mfa_enrollment_user_id"] = user.pk
+    request.session.set_expiry(600)
+    return redirect("setup_mfa")
 
 
 def profile_view(request):
