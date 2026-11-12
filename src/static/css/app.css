@@ -3837,61 +3837,6 @@ body:has(#app-preview .prototype-page:target, #app-preview .prototype-page :targ
     color: #1e293b;
 }
 
-.upcoming-event {
-    display: flex;
-    align-items: center;
-    gap: 11px;
-    padding: 9px 0;
-}
-
-.upcoming-event + .upcoming-event {
-    border-top: 1px solid #eef1f5;
-}
-
-.upcoming-event > span:last-child {
-    display: grid;
-    min-width: 0;
-}
-
-.upcoming-event > span:last-child strong {
-    overflow: hidden;
-    color: #334155;
-    font-size: 11px;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.upcoming-event > span:last-child small {
-    color: #94a3b8;
-    font-size: 10px;
-}
-
-.event-date {
-    display: grid;
-    width: 38px;
-    height: 42px;
-    flex: 0 0 auto;
-    align-content: center;
-    justify-items: center;
-    border-radius: 10px;
-    background: #eff6ff;
-    color: #2563eb;
-    line-height: 1.1;
-}
-
-.event-date strong {
-    font-size: 14px;
-}
-
-.event-date small {
-    font-size: 9px;
-}
-
-.event-date-mint {
-    background: #ecfdf5;
-    color: #059669;
-}
-
 .learning-tip {
     background: linear-gradient(145deg, #eff6ff, #f8fbff) !important;
 }

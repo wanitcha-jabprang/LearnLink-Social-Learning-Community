@@ -1,9 +1,32 @@
 <article class="card post-card" data-post-card data-server-post-id="{{ post.pk }}" data-post-key="server-{{ post.pk }}">
     <header class="post-header">
-        <span class="avatar">{% if post.user.profile_image %}<img src="{{ post.user.profile_image.url }}" alt="">{% else %}{{ post.user.full_name|default:post.user.username|slice:":1"|upper }}{% endif %}</span>
+
+        <!-- รูปโปรไฟล์เจ้าของโพสต์ กดเข้าโปรไฟล์ได้ -->
+        <a href="{% url 'user_profile' post.user_id %}"
+           class="avatar"
+           aria-label="ดูโปรไฟล์ของ {{ post.user.username }}"
+           style="text-decoration: none; cursor: pointer;">
+            {% if post.user.profile_image %}
+                <img src="{{ post.user.profile_image.url }}" alt="">
+            {% else %}
+                {{ post.user.full_name|default:post.user.username|slice:":1"|upper }}
+            {% endif %}
+        </a>
+
+        <!-- ชื่อและข้อมูลเจ้าของโพสต์ -->
+
         <div class="post-author">
-            <strong>{{ post.user.full_name|default:post.user.username }}</strong>
-            <span class="post-meta">{{ post.created_at|date:"j M Y · H:i" }}{% if post.community %} · {{ post.community.name }}{% endif %}</span>
+            <a href="{% url 'user_profile' post.user_id %}"
+               style="text-decoration: none; color: inherit; cursor: pointer;">
+                <strong>{{ post.user.full_name|default:post.user.username }}</strong>
+            </a>
+
+            <span class="post-meta">
+                {{ post.created_at|date:"j M Y · H:i" }}
+                {% if post.community %}
+                    · {{ post.community.name }}
+                {% endif %}
+            </span>
         </div>
         {% if request.user.pk == post.user_id %}
         <div class="post-owner-actions" data-post-owner-actions>
@@ -38,10 +61,6 @@
             <button class="post-action" type="submit" aria-pressed="{% if post.pk in liked_post_ids %}true{% else %}false{% endif %}">{% if post.pk in liked_post_ids %}♥ ถูกใจแล้ว{% else %}♡ ถูกใจ{% endif %}</button>
         </form>
         <a class="post-action" href="#comments-{{ post.pk }}">▢ แสดงความคิดเห็น</a>
-        <form action="{% url 'toggle_bookmark' post.pk %}" method="post">
-            {% csrf_token %}<input type="hidden" name="_html" value="1"><input type="hidden" name="next" value="{{ request.get_full_path }}#{{ return_anchor|default:'home-page' }}">
-            <button class="post-action" type="submit" aria-pressed="{% if post.pk in saved_post_ids %}true{% else %}false{% endif %}">{% if post.pk in saved_post_ids %}♧ บันทึกแล้ว{% else %}♧ บันทึก{% endif %}</button>
-        </form>
     </div>
     <section class="comment-area" id="comments-{{ post.pk }}">
         <div class="comment-list">

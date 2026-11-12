@@ -1,70 +1,153 @@
-from django.contrib.auth.decorators import login_required
-from django.db.models import Count
-from django.shortcuts import get_object_or_404, redirect
-from django.views.decorators.http import require_POST
-from .models import SpamReport
-from django.db.models import Q
+﻿from django.db.models import Q
 from django.shortcuts import render
-from django.utils.html import escape
-from community.models import Community, CommunityMember
+
+from community.models import Community
 from post.models import Bookmark, Like, Post
-
-from functools import wraps
-from django.core.cache import cache
-from django.http import HttpResponse
+from users.models import Follow, User
 
 
-def rate_limit_feed(max_requests=40, window_seconds=60):
-    """จำกัดความถี่การเรียก Feed/Search ป้องกัน Bot และ API Abuse"""
-    def decorator(view_func):
-        @wraps(view_func)
-        def _wrapped_view(request, *args, **kwargs):
-            ident = (
-                f"user_{request.user.id}"
-                if request.user.is_authenticated
-                else f"ip_{request.META.get('REMOTE_ADDR', 'unknown')}"
-            )
-            is_search = bool(request.GET.get("q", "").strip())
-            limit = 15 if is_search else max_requests
-            cache_key = f"rl_feed_{'search' if is_search else 'view'}_{ident}"
-
-            count = cache.get(cache_key, 0)
-            if count >= limit:
-                return HttpResponse(
-                    "Too Many Requests: กรุณารอสักครู่แล้วลองใหม่อีกครั้ง",
-                    status=429,
-                )
-            cache.set(cache_key, count + 1, timeout=window_seconds)
-            return view_func(request, *args, **kwargs)
-        return _wrapped_view
-    return decorator
-@rate_limit_feed(max_requests=40, window_seconds=60)
 def home_view(request):
+    # 1. ดึงโพสต์ทั้งหมด
     posts = (
         Post.objects.select_related("user", "community")
-        .annotate(report_count=Count("spam_reports"))
-        .filter(report_count__lt=3)  # Auto Hide สแปมที่โดน Report ตั้งแต่ 3 ครั้งขึ้นไป
-        .only(
-            "id", "content", "image", "video", "created_at", "community_id",
-            "user__id", "user__username", "user__full_name", "user__profile_image",
-            "community__id", "community__name", "community__is_private", "community__owner_id",
-        )
         .prefetch_related("comment_set__user", "like_set")
         .order_by("-created_at")
     )
+
+    # 2. กรองโพสต์ตามสิทธิ์การเข้าถึงชุมชน
+    if request.user.is_authenticated:
+        posts = posts.filter(
+            Q(community__isnull=True)
+            | Q(community__communitymember__user=request.user)
+            | Q(community__owner=request.user)
+        ).distinct()
+    else:
+        posts = posts.filter(community__isnull=True)
+
+    # 3. ค้นหาโพสต์
+    query = request.GET.get("q", "").strip()
+
+    if query:
+        search_term = query.removeprefix("#").strip()
+        posts = posts.filter(
+            Q(content__icontains=search_term)
+            | Q(user__full_name__icontains=search_term)
+            | Q(user__username__icontains=search_term)
+            | Q(community__name__icontains=search_term)
+        )
+
+    # 4. แสดงเฉพาะโพสต์ที่บันทึกไว้ หากมีการร้องขอ
+    saved_only = request.GET.get("saved") == "1"
+
+    if saved_only and request.user.is_authenticated:
+        posts = posts.filter(bookmarks__user=request.user)
+    elif saved_only:
+        posts = posts.none()
+
+    # 5. ดึงโพสต์ของผู้ใช้ปัจจุบัน
+    profile_posts = (
+        Post.objects.filter(user=request.user)
+        .select_related("user", "community")
+        .prefetch_related("comment_set__user", "like_set")
+        .order_by("-created_at")
+        if request.user.is_authenticated
+        else []
+    )
+
+    # 6. เก็บ ID โพสต์ที่กดถูกใจหรือบันทึกไว้
+    liked_post_ids = set()
+    saved_post_ids = set()
+
+    if request.user.is_authenticated:
+        liked_post_ids = set(
+            Like.objects.filter(user=request.user).values_list(
+                "post_id", flat=True
+            )
+        )
+
+        saved_post_ids = set(
+            Bookmark.objects.filter(user=request.user).values_list(
+                "post_id", flat=True
+            )
+        )
+
+    # 7. ดึงชุมชนที่ผู้ใช้มีสิทธิ์เข้าถึง
+    communities = Community.objects.all()
+
+    if request.user.is_authenticated:
+        communities = communities.filter(
+            Q(is_private=False)
+            | Q(communitymember__user=request.user)
+            | Q(owner=request.user)
+        ).distinct()
+    else:
+        communities = communities.filter(is_private=False)
+
+    # 8. ดึงชุมชนที่ผู้ใช้เข้าร่วม
+    joined_communities = (
+        Community.objects.filter(
+            Q(communitymember__user=request.user)
+            | Q(owner=request.user)
+        ).distinct()
+        if request.user.is_authenticated
+        else Community.objects.none()
+    )
+
+    # 9. แนะนำผู้ใช้ โดยไม่แสดงบัญชีตัวเอง
+    suggested_users = (
+        User.objects.exclude(pk=request.user.pk).order_by("-created_at")[:5]
+        if request.user.is_authenticated
+        else User.objects.none()
+    )
+
+    # 10. เก็บ ID ของผู้ใช้ที่บัญชีปัจจุบันติดตามอยู่
+    followed_user_ids = (
+        set(
+            Follow.objects.filter(follower=request.user).values_list(
+                "following_id", flat=True
+            )
+        )
+        if request.user.is_authenticated
+        else set()
+    )
+
+    # 11. ส่งข้อมูลไปยัง Template
+    context = {
+        "posts": posts,
+        "query": query,
+        "search_query": query,
+        "saved_only": saved_only,
+        "profile_posts": profile_posts,
+        "liked_post_ids": liked_post_ids,
+        "saved_post_ids": saved_post_ids,
+        "communities": communities,
+        "joined_communities": joined_communities,
+        "suggested_users": suggested_users,
+        "followed_user_ids": followed_user_ids,
+    }
+
+    return render(request, "home/home.html", context)
+
+
+def explore_view(request):
+    # ใช้หน้าเดียวกับ Home เพื่อให้ URL /explore/ ทำงานได้
+    return home_view(request)
+
+def home_view(request):
+    posts = Post.objects.select_related("user", "community").prefetch_related(
+        "comment_set__user",
+        "like_set",
+    ).order_by("-created_at")
     
     # คัดกรองโพสต์ตามสิทธิ์การมองเห็น
     if request.user.is_authenticated:
         posts = posts.filter(
             Q(community__isnull=True)
-            | Q(community__is_private=False)
             | Q(community__communitymember__user=request.user)
             | Q(community__owner=request.user)
         ).distinct()
     else:
-        posts = posts.filter(
-            Q(community__isnull=True) | Q(community__is_private=False)
-        )
+        posts = posts.filter(community__isnull=True)
         
     query = request.GET.get("q", "").strip()
     searched_communities = Community.objects.none()
@@ -128,7 +211,7 @@ def home_view(request):
     else:
         communities = communities.filter(is_private=False)
         
-    response = render(
+    return render(
         request,
         "home/home.html",
         {
@@ -136,7 +219,7 @@ def home_view(request):
             "profile_posts": profile_posts,
             "liked_post_ids": liked_post_ids,
             "saved_post_ids": saved_post_ids,
-            "search_query": escape(query),
+            "search_query": query,
             "searched_communities": searched_communities,
             "saved_only": saved_only,
             "communities": communities.order_by("name"),
@@ -157,35 +240,10 @@ def home_view(request):
                 )
                 if request.user.is_authenticated
                 else set()
-           ),
+            ),
         },
     )
-    response["Content-Security-Policy"] = (
-        "default-src 'self'; "
-        "script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://unpkg.com; "
-        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
-        "img-src 'self' data: blob: https:; "
-        "font-src 'self' https://fonts.gstatic.com data:;"
-    )
-    return response
 
-@rate_limit_feed(max_requests=40, window_seconds=60)
+
 def explore_view(request):
     return render(request, "home/explore.html")
-@rate_limit_feed(max_requests=40, window_seconds=60)
-def explore_view(request):
-    return render(request, "home/explore.html")
-
-
-@login_required
-@require_POST
-def report_post_view(request, post_id):
-    """รับการแจ้ง Report สแปม และ Auto Hide อัตโนมัติเมื่อถึงเกณฑ์"""
-    post = get_object_or_404(Post, pk=post_id)
-    if post.user != request.user:
-        SpamReport.objects.get_or_create(
-            post=post,
-            reporter=request.user,
-            defaults={"reason": request.POST.get("reason", "Spam")[:255]},
-        )
-    return redirect(request.META.get("HTTP_REFERER", "/"))

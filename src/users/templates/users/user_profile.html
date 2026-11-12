@@ -1,0 +1,240 @@
+
+{% load static %}
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ profile_user.full_name }} | LearnLink</title>
+    <style>
+        body {
+            margin: 0;
+            background: #f5f7fb;
+            font-family: Arial, sans-serif;
+            color: #253047;
+        }
+        .container {
+            max-width: 850px;
+            margin: 35px auto;
+            padding: 0 16px;
+        }
+        .card {
+            background: white;
+            border-radius: 18px;
+            padding: 25px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 18px rgba(0,0,0,.05);
+        }
+        .back-link {
+            display: inline-block;
+            margin-bottom: 20px;
+            color: #5367d9;
+            text-decoration: none;
+        }
+        .profile-header {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+        .avatar {
+            width: 85px;
+            height: 85px;
+            border-radius: 50%;
+            background: #e3e9ff;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 35px;
+            color: #5367d9;
+            object-fit: cover;
+        }
+        .profile-info h1 {
+            margin: 0 0 5px;
+        }
+        .profile-info p {
+            color: #697386;
+        }
+        .stats {
+            display: flex;
+            gap: 30px;
+            margin: 25px 0;
+            flex-wrap: wrap;
+        }
+        .stats strong {
+            display: block;
+            font-size: 22px;
+        }
+        .profile-actions {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+        .follow-status {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 16px;
+            border: 1px solid #d9e3ff;
+            border-radius: 999px;
+            background: #f1f5ff;
+            color: #4055bb;
+            font-size: 14px;
+            font-weight: 600;
+        }
+        .follow-status::before {
+            content: "✓";
+            display: inline-grid;
+            width: 20px;
+            height: 20px;
+            place-items: center;
+            border-radius: 50%;
+            background: #dce6ff;
+            font-size: 12px;
+        }
+        .btn {
+            min-height: 42px;
+            padding: 10px 20px;
+            border: 1px solid transparent;
+            border-radius: 10px;
+            background: #5367d9;
+            color: white;
+            cursor: pointer;
+            font: inherit;
+            font-size: 14px;
+            font-weight: 600;
+            transition: background-color .18s ease, border-color .18s ease, color .18s ease;
+        }
+        .btn:hover {
+            background: #4055bb;
+        }
+        .btn:focus-visible {
+            outline: 3px solid rgba(83, 103, 217, .3);
+            outline-offset: 2px;
+        }
+        .btn-unfollow {
+            border-color: #f0c8cc;
+            background: white;
+            color: #b42332;
+        }
+        .btn-unfollow:hover {
+            border-color: #b42332;
+            background: #fff1f2;
+            color: #91202c;
+        }
+        @media (max-width: 480px) {
+            .profile-actions {
+                align-items: stretch;
+            }
+            .profile-actions form,
+            .profile-actions .btn {
+                width: 100%;
+            }
+        }
+        .post-card {
+            border-top: 1px solid #eee;
+            padding: 18px 0;
+            overflow-wrap: anywhere;
+        }
+        .post-card img {
+            max-width: 100%;
+            border-radius: 10px;
+        }
+        .post-card video {
+            max-width: 100%;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+
+    <a href="{% url 'home' %}#home-page" class="back-link">
+        ← กลับหน้าฟีด
+    </a>
+
+    <section class="card">
+        <div class="profile-header">
+
+            {% if profile_user.profile_image %}
+                <img class="avatar"
+                     src="{{ profile_user.profile_image.url }}"
+                     alt="รูปโปรไฟล์">
+            {% else %}
+                <div class="avatar">
+                    {{ profile_user.full_name|default:profile_user.username|slice:":1"|upper }}
+                </div>
+            {% endif %}
+
+            <div class="profile-info">
+                <h1>{{ profile_user.full_name|default:profile_user.username }}</h1>
+                <p>@{{ profile_user.username }}</p>
+            </div>
+        </div>
+
+        <p>{{ profile_user.bio|default:"ยังไม่มีคำแนะนำตัว" }}</p>
+
+        <div class="stats">
+            <div>
+                <strong>{{ posts_count }}</strong>
+                โพสต์ที่มองเห็น
+            </div>
+            <div>
+                <strong>{{ followers_count }}</strong>
+                ผู้ติดตาม
+            </div>
+            <div>
+                <strong>{{ following_count }}</strong>
+                กำลังติดตาม
+            </div>
+        </div>
+
+        <div class="profile-actions">
+            {% if is_following %}
+                <span class="follow-status">กำลังติดตาม</span>
+                <form method="post" action="{% url 'unfollow' profile_user.id %}">
+                    {% csrf_token %}
+                    <button class="btn btn-unfollow" type="submit">
+                        เลิกติดตาม
+                    </button>
+                </form>
+            {% else %}
+                <form method="post" action="{% url 'follow' profile_user.id %}">
+                    {% csrf_token %}
+                    <button class="btn" type="submit">
+                        + ติดตาม
+                    </button>
+                </form>
+            {% endif %}
+        </div>
+    </section>
+
+    <section class="card">
+        <h2>โพสต์ของ {{ profile_user.full_name|default:profile_user.username }}</h2>
+
+        {% for post in user_posts %}
+            <article class="post-card">
+                <p>{{ post.content|linebreaksbr }}</p>
+
+                {% if post.image %}
+                    <img src="{{ post.image.url }}" alt="รูปภาพโพสต์">
+                {% endif %}
+
+                {% if post.video %}
+                    <video controls preload="metadata">
+                        <source src="{{ post.video.url }}">
+                    </video>
+                {% endif %}
+
+                <p>
+                    <small>{{ post.created_at|date:"d/m/Y H:i" }}</small>
+                </p>
+            </article>
+        {% empty %}
+            <p>ยังไม่มีโพสต์ที่สามารถแสดงได้</p>
+        {% endfor %}
+    </section>
+
+</div>
+</body>
+</html>
