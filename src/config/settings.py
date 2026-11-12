@@ -33,8 +33,7 @@ DEBUG = os.getenv("DEBUG") == "True"
 ALLOWED_HOSTS = [
     "localhost",
     "127.0.0.1",
-    "172.20.10.2",
-    "49.237.65.250"
+    "allowance-switch-said-mic.trycloudflare.com",
 ]
 
 
