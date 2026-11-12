@@ -23,3 +23,12 @@ class SpamReport(TimestampedModel):
 
     def __str__(self):
         return f"Report on Post {self.post_id} by {self.reporter}"
+
+
+class RateLimitBucket(models.Model):
+    key = models.CharField(max_length=120, unique=True)
+    count = models.PositiveIntegerField(default=0)
+    window_start = models.DateTimeField()
+
+    class Meta:
+        db_table = "feed_rate_limit_bucket"
