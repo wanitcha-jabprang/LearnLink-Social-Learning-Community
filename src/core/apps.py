@@ -1,5 +1,5 @@
-from django.apps import AppConfig
+from common.apps import LayeredFeatureConfig
 
 
-class CoreConfig(AppConfig):
-    name = 'core'
+class CoreConfig(LayeredFeatureConfig):
+    name = "core"

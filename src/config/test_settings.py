@@ -1,4 +1,4 @@
-from .settings import *
+from .settings import *  # noqa: F403
 
 SECRET_KEY = "test-only-key"
 DEBUG = True
@@ -10,3 +10,10 @@ DATABASES = {
     }
 }
 AUTH_PASSWORD_VALIDATORS = []
+
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        "LOCATION": "learnlink-test-cache",
+    }
+}

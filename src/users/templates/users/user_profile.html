@@ -65,18 +65,72 @@
             display: block;
             font-size: 22px;
         }
+        .profile-actions {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+        .follow-status {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 16px;
+            border: 1px solid #d9e3ff;
+            border-radius: 999px;
+            background: #f1f5ff;
+            color: #4055bb;
+            font-size: 14px;
+            font-weight: 600;
+        }
+        .follow-status::before {
+            content: "✓";
+            display: inline-grid;
+            width: 20px;
+            height: 20px;
+            place-items: center;
+            border-radius: 50%;
+            background: #dce6ff;
+            font-size: 12px;
+        }
         .btn {
-            padding: 11px 24px;
+            min-height: 42px;
+            padding: 10px 20px;
+            border: 1px solid transparent;
             border-radius: 10px;
-            border: 0;
             background: #5367d9;
             color: white;
             cursor: pointer;
-            font-size: 15px;
+            font: inherit;
+            font-size: 14px;
+            font-weight: 600;
+            transition: background-color .18s ease, border-color .18s ease, color .18s ease;
+        }
+        .btn:hover {
+            background: #4055bb;
+        }
+        .btn:focus-visible {
+            outline: 3px solid rgba(83, 103, 217, .3);
+            outline-offset: 2px;
         }
         .btn-unfollow {
-            background: #eef0f5;
-            color: #253047;
+            border-color: #f0c8cc;
+            background: white;
+            color: #b42332;
+        }
+        .btn-unfollow:hover {
+            border-color: #b42332;
+            background: #fff1f2;
+            color: #91202c;
+        }
+        @media (max-width: 480px) {
+            .profile-actions {
+                align-items: stretch;
+            }
+            .profile-actions form,
+            .profile-actions .btn {
+                width: 100%;
+            }
         }
         .post-card {
             border-top: 1px solid #eee;
@@ -135,21 +189,24 @@
             </div>
         </div>
 
-        {% if is_following %}
-            <form method="post" action="{% url 'unfollow' profile_user.id %}">
-                {% csrf_token %}
-                <button class="btn btn-unfollow" type="submit">
-                    กำลังติดตาม · เลิกติดตาม
-                </button>
-            </form>
-        {% else %}
-            <form method="post" action="{% url 'follow' profile_user.id %}">
-                {% csrf_token %}
-                <button class="btn" type="submit">
-                    + ติดตาม
-                </button>
-            </form>
-        {% endif %}
+        <div class="profile-actions">
+            {% if is_following %}
+                <span class="follow-status">กำลังติดตาม</span>
+                <form method="post" action="{% url 'unfollow' profile_user.id %}">
+                    {% csrf_token %}
+                    <button class="btn btn-unfollow" type="submit">
+                        เลิกติดตาม
+                    </button>
+                </form>
+            {% else %}
+                <form method="post" action="{% url 'follow' profile_user.id %}">
+                    {% csrf_token %}
+                    <button class="btn" type="submit">
+                        + ติดตาม
+                    </button>
+                </form>
+            {% endif %}
+        </div>
     </section>
 
     <section class="card">

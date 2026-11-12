@@ -1,3 +1,4 @@
+
 """
 Django settings for config project.
 
@@ -176,3 +177,25 @@ AUTH_USER_MODEL = "users.User"
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 CSRF_COOKIE_HTTPONLY = True
+
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.db.DatabaseCache",
+        "LOCATION": "django_cache_table",
+    }
+}
+import os
+
+DATABASES = {
+    "default": {
+        "ENGINE": "django.db.backends.mysql",
+        "NAME": os.getenv("DB_NAME"),
+        "USER": os.getenv("DB_USER"),
+        "PASSWORD": os.getenv("DB_PASSWORD"),
+        "HOST": os.getenv("DB_HOST"),
+        "PORT": os.getenv("DB_PORT", "3306"),
+        "OPTIONS": {
+            "charset": "utf8mb4",
+        },
+    }
+}
