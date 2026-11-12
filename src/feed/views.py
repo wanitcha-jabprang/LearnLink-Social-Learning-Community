@@ -6,10 +6,16 @@ from post.models import Bookmark, Like, Post
 
 
 def home_view(request):
-    posts = Post.objects.select_related("user", "community").prefetch_related(
-        "comment_set__user",
-        "like_set",
-    ).order_by("-created_at")
+    posts = (
+        Post.objects.select_related("user", "community")
+        .only(
+            "id", "content", "created_at", "community_id",
+            "user__id", "user__username", "user__full_name",
+            "community__id", "community__name", "community__is_private", "community__owner_id",
+        )
+        .prefetch_related("comment_set__user", "like_set")
+        .order_by("-created_at")
+    )
     
     # คัดกรองโพสต์ตามสิทธิ์การมองเห็น
     if request.user.is_authenticated:
