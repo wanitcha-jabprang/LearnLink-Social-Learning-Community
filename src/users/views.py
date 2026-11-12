@@ -9,7 +9,8 @@ import qrcode
 import pyotp
 from django.contrib.auth import authenticate, login, logout
 from django.contrib import messages
-from django.core.cache import cache
+from django.core.cache import caches
+from django.core.cache.backends.redis import RedisCache
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.password_validation import validate_password
 from django.db import transaction
@@ -83,7 +84,12 @@ def get_mfa_redis_client():
     """
     Return the Redis client configured by Django.
     """
-    return cache._cache.get_client(write=True)
+    backend = caches["default"]
+    if not isinstance(backend, RedisCache):
+        raise ImproperlyConfigured(
+            "The default cache backend must be RedisCache for MFA."
+        )
+    return backend._cache.get_client(write=True)
 
 
 def get_mfa_attempts(key):
