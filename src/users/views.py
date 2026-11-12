@@ -1,3 +1,4 @@
+import hashlib
 from django.contrib import messages
 from django.core.cache import cache
 from django.contrib.auth import authenticate, login, logout
@@ -21,8 +22,17 @@ def login_view(request):
     if request.method != "POST":
         return redirect("home")
 
+    identifier = request.POST.get("identifier", "").strip()
+    password = request.POST.get("password", "")
+
     ip_address = request.META.get("REMOTE_ADDR", "unknown")
-    cache_key = f"login_failed:{ip_address}"
+    normalized_identifier = identifier.casefold()
+
+    identifier_hash = hashlib.sha256(
+        normalized_identifier.encode("utf-8")
+    ).hexdigest()
+
+    cache_key = f"login_failed:{ip_address}:{identifier_hash}"
 
     failed_attempts = cache.get(cache_key, 0)
 
@@ -33,8 +43,6 @@ def login_view(request):
         )
         return redirect("home")
 
-    identifier = request.POST.get("identifier", "").strip()
-    password = request.POST.get("password", "")
     username = identifier
 
     if "@" in identifier:

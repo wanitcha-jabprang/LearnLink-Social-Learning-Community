@@ -1,3 +1,4 @@
+import hashlib
 from django.core.cache import cache
 import tempfile
 from io import BytesIO
@@ -84,7 +85,11 @@ class AuthenticationFlowTests(TestCase):
             response = self.client.post(login_url, login_data)
             self.assertRedirects(response, reverse("home"))
 
-        cache_key = "login_failed:127.0.0.1"
+        identifier_hash = hashlib.sha256(
+            login_data["identifier"].casefold().encode("utf-8")
+        ).hexdigest()
+
+        cache_key = f"login_failed:127.0.0.1:{identifier_hash}"
         self.assertEqual(cache.get(cache_key), 5)
 
         # ครั้งที่ 6 ต้องถูกปฏิเสธ
@@ -96,6 +101,82 @@ class AuthenticationFlowTests(TestCase):
 
         cache.clear()
 
+
+
+    def test_successful_login_does_not_clear_another_account_counter(self):
+        cache.clear()
+
+        user = User.objects.create_user(
+            username="account-two",
+            email="account-two@example.com",
+            password="StrongPass123!",
+            full_name="Account Two",
+        )
+
+        other_identifier = "account-one"
+
+        response = self.client.post(
+            reverse("login"),
+            {
+                "identifier": other_identifier,
+                "password": "wrong-password",
+            },
+        )
+        self.assertRedirects(response, reverse("home"))
+
+        identifier_hash = hashlib.sha256(
+            other_identifier.casefold().encode("utf-8")
+        ).hexdigest()
+
+        other_cache_key = (
+            f"login_failed:127.0.0.1:{identifier_hash}"
+        )
+
+        self.assertEqual(cache.get(other_cache_key), 1)
+
+        response = self.client.post(
+            reverse("login"),
+            {
+                "identifier": user.username,
+                "password": "StrongPass123!",
+            },
+        )
+
+        self.assertRedirects(response, reverse("home"))
+        self.assertIn("_auth_user_id", self.client.session)
+        self.assertEqual(cache.get(other_cache_key), 1)
+
+        cache.clear()
+
+    def test_login_failed_attempts_are_separated_by_identifier(self):
+        cache.clear()
+
+        login_url = reverse("login")
+        identifiers = ["account-one", "account-two"]
+
+        for identifier in identifiers:
+            for _ in range(2):
+                response = self.client.post(
+                    login_url,
+                    {
+                        "identifier": identifier,
+                        "password": "wrong-password",
+                    },
+                )
+                self.assertRedirects(response, reverse("home"))
+
+        for identifier in identifiers:
+            identifier_hash = hashlib.sha256(
+                identifier.casefold().encode("utf-8")
+            ).hexdigest()
+
+            cache_key = (
+                f"login_failed:127.0.0.1:{identifier_hash}"
+            )
+
+            self.assertEqual(cache.get(cache_key), 2)
+
+        cache.clear()
 
     def test_profile_can_update_username_and_upload_profile_image(self):
         user = User.objects.create_user(
