@@ -45,8 +45,8 @@ def home_view(request):
         .annotate(report_count=Count("spam_reports"))
         .filter(report_count__lt=3)  # Auto Hide สแปมที่โดน Report ตั้งแต่ 3 ครั้งขึ้นไป
         .only(
-            "id", "content", "created_at", "community_id",
-            "user__id", "user__username", "user__full_name",
+            "id", "content", "image", "video", "created_at", "community_id",
+            "user__id", "user__username", "user__full_name", "user__profile_image",
             "community__id", "community__name", "community__is_private", "community__owner_id",
         )
         .prefetch_related("comment_set__user", "like_set")
@@ -172,3 +172,20 @@ def home_view(request):
 @rate_limit_feed(max_requests=40, window_seconds=60)
 def explore_view(request):
     return render(request, "home/explore.html")
+@rate_limit_feed(max_requests=40, window_seconds=60)
+def explore_view(request):
+    return render(request, "home/explore.html")
+
+
+@login_required
+@require_POST
+def report_post_view(request, post_id):
+    """รับการแจ้ง Report สแปม และ Auto Hide อัตโนมัติเมื่อถึงเกณฑ์"""
+    post = get_object_or_404(Post, pk=post_id)
+    if post.user != request.user:
+        SpamReport.objects.get_or_create(
+            post=post,
+            reporter=request.user,
+            defaults={"reason": request.POST.get("reason", "Spam")[:255]},
+        )
+    return redirect(request.META.get("HTTP_REFERER", "/"))
