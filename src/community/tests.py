@@ -1,4 +1,5 @@
 import tempfile
+import uuid
 from io import BytesIO
 from unittest.mock import patch
 
@@ -10,7 +11,10 @@ from PIL import Image
 from community.infrastructure.container import get_community_service
 from community.infrastructure.persistence.models import (
     Community,
+    CommunityDocument,
     CommunityMember,
+    CommunityReport,
+    PrivateMediaStorage,
 )
 from post.infrastructure.persistence.models import Post
 from users.infrastructure.persistence.models import User
@@ -294,3 +298,171 @@ class CommunityWorkflowTests(TestCase):
             ).status_code,
             404,
         )
+
+    # --- Security & Moderation Tests (R-03, R-04, R-07) ---
+
+    def test_community_uses_uuid_primary_key(self):
+        community = Community.objects.create(
+            name="UUID Community",
+            description="",
+            invite_code="UUID1234",
+            owner=self.owner,
+        )
+        self.assertIsInstance(community.pk, uuid.UUID)
+
+    def test_private_document_storage_and_access_control(self):
+        community = Community.objects.create(
+            name="Private Docs Club",
+            description="",
+            invite_code="DOCS1234",
+            is_private=True,
+            owner=self.owner,
+        )
+        CommunityMember.objects.create(community=community, user=self.owner)
+
+        doc_file = SimpleUploadedFile(
+            "secret_notes.pdf",
+            b"%PDF-1.4 secret content",
+            content_type="application/pdf",
+        )
+        document = CommunityDocument.objects.create(
+            community=community,
+            uploaded_by=self.owner,
+            title="Secret Notes",
+            file=doc_file,
+        )
+
+        try:
+            # 1. Storage ต้องใช้ PrivateMediaStorage และไม่อนุญาตให้เข้าถึงตรงๆ ผ่าน public URL
+            self.assertIsInstance(document.file.storage, PrivateMediaStorage)
+            with self.assertRaises(ValueError):
+                _ = document.file.url
+
+            # 2. คนนอกชุมชน (self.member ที่ยังไม่ join) ต้องดาวน์โหลดไม่ได้
+            self.client.force_login(self.member)
+            download_url = reverse("download_document", args=[document.pk])
+            denied_response = self.client.get(download_url)
+            self.assertNotEqual(denied_response.status_code, 200)
+
+            # 3. สมาชิกในชุมชนต้องดาวน์โหลดไฟล์ได้สำเร็จ
+            CommunityMember.objects.create(community=community, user=self.member)
+            allowed_response = self.client.get(download_url)
+            self.assertEqual(allowed_response.status_code, 200)
+            self.assertEqual(
+                b"".join(allowed_response.streaming_content),
+                b"%PDF-1.4 secret content",
+            )
+        finally:
+            if document.file and document.file.storage.exists(document.file.name):
+                document.file.storage.delete(document.file.name)
+
+    def test_report_prevents_duplicates_and_cross_community_abuse(self):
+        community_a = Community.objects.create(
+            name="Community A",
+            description="",
+            invite_code="COMMA123",
+            owner=self.owner,
+        )
+        community_b = Community.objects.create(
+            name="Community B",
+            description="",
+            invite_code="COMMB123",
+            owner=self.owner,
+        )
+        CommunityMember.objects.create(community=community_a, user=self.member)
+
+        post_in_a = Post.objects.create(
+            user=self.owner,
+            community=community_a,
+            content="โพสต์ในชุมชน A",
+        )
+        post_in_b = Post.objects.create(
+            user=self.owner,
+            community=community_b,
+            content="โพสต์ในชุมชน B",
+        )
+
+        self.client.force_login(self.member)
+        report_url_a = reverse("report_item", args=[community_a.pk])
+
+        # 1. รายงานโพสต์ข้ามชุมชน (ส่ง ID ของโพสต์ใน B เข้า endpoint ของ A) ต้องถูกปฏิเสธ
+        self.client.post(
+            report_url_a,
+            {
+                "report_type": "POST",
+                "target_id": str(post_in_b.pk),
+                "reason": "Cross community test",
+            },
+        )
+        self.assertEqual(CommunityReport.objects.count(), 0)
+
+        # 2. ผู้ใช้คนเดิมกดรายงานโพสต์เดิมซ้ำ 3 ครั้ง ต้องบันทึกแค่ 1 ครั้งและไม่ซ่อนโพสต์
+        for _ in range(3):
+            self.client.post(
+                report_url_a,
+                {
+                    "report_type": "POST",
+                    "target_id": str(post_in_a.pk),
+                    "reason": "Spam post",
+                },
+            )
+
+        post_in_a.refresh_from_db()
+        self.assertEqual(
+            CommunityReport.objects.filter(
+                community=community_a,
+                target_id=str(post_in_a.pk),
+                reporter=self.member,
+            ).count(),
+            1,
+        )
+        self.assertFalse(post_in_a.is_hidden)
+
+    def test_post_auto_hides_after_three_distinct_reports_and_disappears_from_feeds(self):
+        community = Community.objects.create(
+            name="Moderation Club",
+            description="",
+            invite_code="MOD12345",
+            owner=self.owner,
+        )
+        spam_post = Post.objects.create(
+            user=self.owner,
+            community=community,
+            content="ข้อความสแปมที่ควรถูกซ่อนอัตโนมัติ",
+        )
+
+        reporters = [
+            User.objects.create_user(
+                username=f"reporter{i}",
+                email=f"reporter{i}@example.com",
+                password="StrongPass123!",
+                full_name=f"ผู้รายงาน {i}",
+            )
+            for i in range(1, 4)
+        ]
+
+        report_url = reverse("report_item", args=[community.pk])
+        for user in reporters:
+            CommunityMember.objects.create(community=community, user=user)
+            self.client.force_login(user)
+            self.client.post(
+                report_url,
+                {
+                    "report_type": "POST",
+                    "target_id": str(spam_post.pk),
+                    "reason": "สแปมซ้ำซ้อน",
+                },
+            )
+
+        # 1. โพสต์ต้องถูกซ่อนอัตโนมัติเมื่อครบ 3 ผู้รายงานที่ไม่ซ้ำกัน
+        spam_post.refresh_from_db()
+        self.assertTrue(spam_post.is_hidden)
+
+        # 2. โพสต์ต้องหายไปจากหน้าฟีดหลักและหน้าโปรไฟล์ของเจ้าของโพสต์
+        self.client.force_login(self.member)
+        home_response = self.client.get(reverse("home"))
+        self.assertNotContains(home_response, spam_post.content)
+
+        self.client.force_login(self.owner)
+        profile_response = self.client.get(reverse("profile"), follow=True)
+        self.assertNotContains(profile_response, spam_post.content)

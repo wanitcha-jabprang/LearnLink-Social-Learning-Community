@@ -8,7 +8,8 @@ from users.infrastructure.persistence.models import Follow, User
 class FeedRepository:
     def home_context(self, user, query, saved_only):
         posts = (
-            Post.objects.select_related("user", "community")
+            Post.objects.filter(is_hidden=False)
+            .select_related("user", "community")
             .prefetch_related("comment_set__user", "like_set")
             .order_by("-created_at")
         )
@@ -55,7 +56,7 @@ class FeedRepository:
             )
 
         profile_posts = (
-            Post.objects.filter(user=user)
+            Post.objects.filter(user=user, is_hidden=False)
             .select_related("user", "community")
             .prefetch_related("comment_set__user", "like_set")
             .order_by("-created_at")

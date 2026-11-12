@@ -12,7 +12,7 @@ from community.infrastructure.persistence.models import Community, CommunityDocu
 
 # 🔒 R-07 Spam Filtering Keywords List
 FORBIDDEN_KEYWORDS = [
-    "spam", "gambling", "casino", "scam", "พนัน", "คาสิโน", "สล็อต", "บาคาร่า", "แทงบอล", "หวย", 
+    "spam", "gambling", "casino", "scam", "พนัน", "คาสิโน", "สล็อต", "บาคาร่า", "แทงบอล", "หวย",
     "ควย", "เหี้ย", "สัส", "เย็ด", "แม่ง", "ระยำ", "มึง", "กู", "อีดอก", "ถ่อย",
     "fuck", "shit", "bitch", "cunt", "dick"
 ]
@@ -39,7 +39,7 @@ def community_detail(request, id):
     if community.is_private:
         is_owner = (community.owner == request.user) if request.user.is_authenticated else False
         is_member = community.is_member(request.user) if request.user.is_authenticated else False
-        
+
         if not request.user.is_authenticated or (not is_owner and not is_member):
             return HttpResponseForbidden("403 Forbidden: คุณไม่มีสิทธิ์เข้าถึงชุมชนส่วนตัวนี้")
 
@@ -237,34 +237,62 @@ def download_document(request, document_id):
 @login_required
 @require_POST
 def report_item(request, community_id):
+    from post.infrastructure.persistence.models import Post
+
     community = get_object_or_404(Community, id=community_id)
     report_type = request.POST.get("report_type", "POST")
-    target_id = request.POST.get("target_id", "")
+    target_id = request.POST.get("target_id", "").strip()
     reason = request.POST.get("reason", "").strip()
 
     if not reason or not target_id:
         messages.error(request, "กรุณากรอกข้อมูลการรายงานให้ครบถ้วน")
         return _redirect_to(request, f"/#community-{community_id}")
 
-    # บันทึกประวัติการรายงาน
-    CommunityReport.objects.create(
+    # 1. ตรวจสอบว่าโพสต์อยู่ในชุมชนนี้จริงหรือไม่ (กรณีรายงาน POST)
+    target_post = None
+    if report_type == "POST":
+        try:
+            target_post = Post.objects.filter(id=target_id, community=community).first()
+        except (ValueError, TypeError):
+            target_post = None
+
+        if not target_post:
+            messages.error(request, "ไม่พบโพสต์นี้ในชุมชนที่ระบุ")
+            return _redirect_to(request, f"/#community-{community_id}")
+
+    # 2. ป้องกันการนับรายงานซ้ำจากผู้ใช้คนเดิม
+    _, created = CommunityReport.objects.get_or_create(
         community=community,
         reporter=request.user,
         report_type=report_type,
-        target_id=target_id,
-        reason=reason,
+        target_id=str(target_id),
+        defaults={"reason": reason},
     )
 
-    # 🔒 R-07 Auto-Hide Logic: ถ้าถูก Report ครบ 3 ครั้งขึ้นไป ให้ซ่อนโพสต์
-    reports_count = CommunityReport.objects.filter(
-        community=community,
-        report_type=report_type,
-        target_id=target_id,
-    ).count()
+    if not created:
+        messages.warning(request, "คุณได้ส่งรายงานรายการนี้ไปแล้ว")
+        return _redirect_to(request, f"/#community-{community_id}")
 
-    if reports_count >= 3 and report_type == "POST":
-        from post.infrastructure.persistence.models import Post
-        Post.objects.filter(id=target_id).update(is_hidden=True)
+    # 3. นับจำนวนผู้รายงานที่ไม่ซ้ำกัน (Distinct Reporters)
+    unique_reporters_count = (
+        CommunityReport.objects.filter(
+            community=community,
+            report_type=report_type,
+            target_id=str(target_id),
+        )
+        .values("reporter")
+        .distinct()
+        .count()
+    )
+
+    # 🔒 R-07 Auto-Hide Logic: ถ้ามีผู้รายงานไม่ซ้ำกันครบ 3 คนขึ้นไป ให้ซ่อนโพสต์ในชุมชนนั้น
+    if unique_reporters_count >= 3 and report_type == "POST" and target_post:
+        Post.objects.filter(id=target_post.id, community=community).update(is_hidden=True)
+        CommunityReport.objects.filter(
+            community=community,
+            report_type="POST",
+            target_id=str(target_id),
+        ).update(status="RESOLVED")
 
     messages.success(request, "ส่งรายงานเรียบร้อยแล้ว ทีมงานจะดำเนินการตรวจสอบโดยเร็ว")
     return _redirect_to(request, f"/#community-{community_id}")

@@ -1,8 +1,27 @@
+import os
 import uuid
+from django.conf import settings
+from django.core.files.storage import FileSystemStorage
 from django.db import models
+from django.utils.deconstruct import deconstructible
 
 from common.abstracts import TimestampedModel
 from users.infrastructure.persistence.models import User
+
+
+# 🔒 R-04: Private Storage แยกออกจาก public media/ และปิดการสร้าง public URL
+@deconstructible
+class PrivateMediaStorage(FileSystemStorage):
+    def __init__(self, *args, **kwargs):
+        kwargs.setdefault("location", os.path.join(settings.BASE_DIR, "private_media"))
+        kwargs.setdefault("base_url", "")
+        super().__init__(*args, **kwargs)
+
+    def url(self, name):
+        raise ValueError("This file is not accessible via a public URL.")
+
+
+private_storage = PrivateMediaStorage()
 
 
 class Community(TimestampedModel):
@@ -55,7 +74,7 @@ class CommunityDocument(TimestampedModel):
     community = models.ForeignKey(Community, on_delete=models.CASCADE, related_name="documents")
     uploaded_by = models.ForeignKey(User, on_delete=models.CASCADE)
     title = models.CharField(max_length=255)
-    file = models.FileField(upload_to="protected_community_docs/")
+    file = models.FileField(upload_to="protected_community_docs/", storage=private_storage)
     is_private = models.BooleanField(default=True)
 
     def __str__(self):

@@ -216,13 +216,15 @@
         </section>
         {% endif %}
 
-        <!-- ฟีดโพสต์ทั้งหมดในชุมชน -->
+        <!-- ฟีดโพสต์ทั้งหมดในชุมชน (กรองโพสต์ที่ถูกซ่อนออก) -->
         <section class="community-post-wall">
             <h3>โพสต์ทั้งหมด</h3>
             {% with return_anchor="community-"|add:community.pk|stringformat:"s" %}
             <div class="community-post-list feed-list">
                 {% for post in community.post_set.all %}
-                    {% include "includes/post_card.html" with post=post return_anchor=return_anchor %}
+                    {% if not post.is_hidden %}
+                        {% include "includes/post_card.html" with post=post return_anchor=return_anchor %}
+                    {% endif %}
                 {% empty %}
                     <p class="community-post-empty">ยังไม่มีโพสต์ในชุมชนนี้</p>
                 {% endfor %}

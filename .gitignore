@@ -4,3 +4,4 @@ media/
 staticfiles/
 __pycache__/
 mysql_data/
+private_media/
