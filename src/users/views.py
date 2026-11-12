@@ -27,6 +27,7 @@ from .security import encrypt_mfa_secret, decrypt_mfa_secret
 
 from redis.exceptions import RedisError
 from django.core.cache import cache
+import hmac
 
 def reserve_login_attempt(key):
     now = timezone.now()
@@ -322,6 +323,7 @@ def mfa_setup_view(request):
     return response
 
 
+
 def verify_mfa_view(request):
     pending_user_id = request.session.get("mfa_pending_user_id")
 
@@ -360,7 +362,6 @@ def verify_mfa_view(request):
 
         return render(request, "users/verify_mfa.html")
 
-    # จองสิทธิ์ก่อนตรวจ OTP เพื่อป้องกัน concurrent requests
     try:
         reserved = reserve_mfa_attempt(cache_key)
     except Exception:
@@ -395,13 +396,22 @@ def verify_mfa_view(request):
         )
         return redirect("home")
 
-    is_valid = (
-        len(otp) == 6
-        and otp.isdigit()
-        and pyotp.TOTP(secret).verify(otp, valid_window=1)
-    )
+    totp = pyotp.TOTP(secret)
 
-    if not is_valid:
+    matched_step = None
+
+    if len(otp) == 6 and otp.isdigit():
+        current_step = totp.timecode(timezone.now())
+
+        for step in (current_step - 1, current_step, current_step + 1):
+            if step < 0:
+                continue
+
+            if hmac.compare_digest(totp.at(step * totp.interval), otp):
+                matched_step = step
+                break
+
+    if matched_step is None:
         try:
             failed_attempts = get_mfa_attempts(cache_key)
         except Exception:
@@ -422,7 +432,53 @@ def verify_mfa_view(request):
         messages.error(request, "รหัส OTP ไม่ถูกต้อง")
         return render(request, "users/verify_mfa.html")
 
-    # OTP ถูกต้อง คืนสิทธิ์ที่จองไว้
+    try:
+        with transaction.atomic():
+            locked_user = User.objects.select_for_update().get(
+                pk=user.pk,
+                mfa_enabled=True,
+            )
+
+            if matched_step <= (
+                locked_user.mfa_last_used_step
+                if locked_user.mfa_last_used_step is not None
+                else -1
+            ):
+                raise ValueError("OTP has already been used")
+
+            locked_user.mfa_last_used_step = matched_step
+            locked_user.save(update_fields=["mfa_last_used_step"])
+
+    except ValueError:
+        try:
+            release_mfa_attempt(cache_key)
+        except Exception:
+            pass
+
+        messages.error(request, "รหัส OTP นี้ถูกใช้ไปแล้ว กรุณารอรหัสใหม่")
+        return render(request, "users/verify_mfa.html")
+
+    except User.DoesNotExist:
+        try:
+            release_mfa_attempt(cache_key)
+        except Exception:
+            pass
+
+        request.session.pop("mfa_pending_user_id", None)
+        return redirect("home")
+
+    except Exception:
+        try:
+            release_mfa_attempt(cache_key)
+        except Exception:
+            pass
+
+        messages.error(
+            request,
+            "ระบบยืนยันตัวตนขัดข้อง กรุณาลองใหม่ภายหลัง",
+        )
+        return redirect("home")
+
     try:
         release_mfa_attempt(cache_key)
     except Exception:
@@ -435,6 +491,7 @@ def verify_mfa_view(request):
     request.session.pop("mfa_pending_user_id", None)
     login(request, user)
     return redirect("home")
+
 
 
 

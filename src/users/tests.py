@@ -579,6 +579,76 @@ class MFAVerificationTests(TestCase):
             self.client.session,
         )
 
+    def test_replayed_otp_is_rejected(self):
+        self.set_pending_session()
+        otp = pyotp.TOTP(self.secret).now()
+
+        with patch.dict(
+            "os.environ",
+            {"MFA_ENCRYPTION_KEY": self.encryption_key},
+        ):
+            first_response = self.client.post(
+                reverse("verify_mfa"),
+                {"otp": otp},
+            )
+
+            self.assertRedirects(first_response, reverse("home"))
+
+            # Start a new MFA verification session for the same user.
+            self.client.logout()
+            self.set_pending_session()
+
+            second_response = self.client.post(
+                reverse("verify_mfa"),
+                {"otp": otp},
+            )
+
+        self.assertEqual(second_response.status_code, 200)
+        self.assertNotIn("_auth_user_id", self.client.session)
+        self.assertIn(
+            "mfa_pending_user_id",
+            self.client.session,
+        )
+
+        self.user.refresh_from_db()
+        self.assertIsNotNone(self.user.mfa_last_used_step)
+
+    def test_new_time_step_otp_is_accepted(self):
+        self.set_pending_session()
+
+        totp = pyotp.TOTP(self.secret)
+        current_step = totp.timecode(timezone.now())
+        next_otp = totp.at((current_step + 1) * totp.interval)
+
+        with (
+            patch.dict(
+                "os.environ",
+                {"MFA_ENCRYPTION_KEY": self.encryption_key},
+            ),
+            patch(
+                "users.views.timezone.now",
+                return_value=timezone.now() + timedelta(
+                    seconds=totp.interval
+                ),
+            ),
+        ):
+            response = self.client.post(
+                reverse("verify_mfa"),
+                {"otp": next_otp},
+            )
+
+        self.assertRedirects(response, reverse("home"))
+        self.assertEqual(
+            str(self.user.pk),
+            self.client.session.get("_auth_user_id"),
+        )
+
+        self.user.refresh_from_db()
+        self.assertEqual(
+            self.user.mfa_last_used_step,
+            current_step + 1,
+        )
+
     def test_invalid_otp_is_rejected(self):
         self.set_pending_session()
 

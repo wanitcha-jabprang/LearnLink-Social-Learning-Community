@@ -17,8 +17,14 @@ class User(AbstractUser, TimestampedModel):
         null=True,
     )
     # Multi-Factor Authentication
+    # Multi-Factor Authentication
     mfa_enabled = models.BooleanField(default=False)
     mfa_secret_encrypted = models.TextField(blank=True, default="")
+    mfa_last_used_step = models.BigIntegerField(
+        null=True,
+        blank=True,
+        default=None,
+    )
 
     def __str__(self):
         return self.username
