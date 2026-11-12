@@ -12,4 +12,5 @@ urlpatterns = [
     path("profile/<int:user_id>/follow/", views.follow_view, name="follow"),
     path("profile/<int:user_id>/unfollow/", views.unfollow_view, name="unfollow"),
     path("profile/<int:user_id>/",views.user_profile_view,name="user_profile"),
+    path("mfa/verify/", views.verify_mfa_view, name="verify_mfa"),
 ]

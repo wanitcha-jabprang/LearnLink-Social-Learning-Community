@@ -5,7 +5,7 @@ from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.password_validation import validate_password
 from django.db import transaction
-from django.core.exceptions import ValidationError
+from django.core.exceptions import ImproperlyConfigured, ValidationError
 from django.core.validators import validate_email
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
@@ -13,11 +13,56 @@ from django.views.decorators.http import require_POST
 from community.models import Community, CommunityMember
 from post.models import Post
 from .forms import ProfileCoverForm, UserProfileForm
-from .models import Follow, User
+from .models import Follow, LoginAttempt, User
 from post.models import Post
 from django.db.models import Q
+from django.utils import timezone
+from datetime import timedelta
+import pyotp
+
+from .security import encrypt_mfa_secret, decrypt_mfa_secret
 
 
+
+def reserve_login_attempt(key):
+    now = timezone.now()
+
+    # Create the record if it does not exist.
+    # get_or_create() handles concurrent creation using the unique key.
+    LoginAttempt.objects.get_or_create(
+        key=key,
+        defaults={
+            "attempts": 0,
+            "window_started_at": now,
+        },
+    )
+
+    # Lock the existing record before updating the counter.
+    with transaction.atomic():
+        attempt = LoginAttempt.objects.select_for_update().get(
+            key=key
+        )
+
+        now = timezone.now()
+
+        # Reset the counter after 60 seconds.
+        if now - attempt.window_started_at >= timedelta(seconds=60):
+            attempt.attempts = 0
+            attempt.window_started_at = now
+
+        # Reject requests after 5 attempts.
+        if attempt.attempts >= 5:
+            return False
+
+        # Reserve one attempt before authentication.
+        attempt.attempts += 1
+        attempt.save(
+            update_fields=["attempts", "window_started_at"]
+        )
+
+        return True
+
+    
 def login_view(request):
     if request.method != "POST":
         return redirect("home")
@@ -28,15 +73,11 @@ def login_view(request):
     ip_address = request.META.get("REMOTE_ADDR", "unknown")
     normalized_identifier = identifier.casefold()
 
-    identifier_hash = hashlib.sha256(
-        normalized_identifier.encode("utf-8")
+    rate_limit_hash = hashlib.sha256(
+        f"{ip_address}:{normalized_identifier}".encode("utf-8")
     ).hexdigest()
 
-    cache_key = f"login_failed:{ip_address}:{identifier_hash}"
-
-    failed_attempts = cache.get(cache_key, 0)
-
-    if failed_attempts >= 5:
+    if not reserve_login_attempt(rate_limit_hash):
         messages.error(
             request,
             "คุณเข้าสู่ระบบไม่สำเร็จเกินจำนวนครั้งที่กำหนด กรุณาลองใหม่ภายหลัง"
@@ -52,18 +93,105 @@ def login_view(request):
     user = authenticate(request, username=username, password=password)
 
     if user is None:
-        cache.add(cache_key, 0, timeout=60)
-        cache.incr(cache_key)
         messages.error(
             request,
             "อีเมล/ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง"
         )
         return redirect("home")
 
-    cache.delete(cache_key)
+   
+
+    if user.mfa_enabled:
+        if not user.mfa_secret_encrypted:
+            messages.error(
+                request,
+                "บัญชีนี้มีปัญหาการตั้งค่า MFA กรุณาติดต่อผู้ดูแลระบบ"
+            )
+            return redirect("home")
+
+        logout(request)
+        request.session["mfa_pending_user_id"] = user.pk
+        request.session.set_expiry(300)
+
+        return redirect("verify_mfa")
+
     login(request, user)
     return redirect("home")
 
+
+
+def verify_mfa_view(request):
+    pending_user_id = request.session.get("mfa_pending_user_id")
+
+    if not pending_user_id:
+        return redirect("home")
+
+    user = User.objects.filter(
+        pk=pending_user_id,
+        mfa_enabled=True,
+    ).first()
+
+    if not user or not user.mfa_secret_encrypted:
+        request.session.pop("mfa_pending_user_id", None)
+        return redirect("home")
+
+    ip_address = request.META.get("REMOTE_ADDR", "unknown")
+    cache_key = f"mfa_failed:{ip_address}:{user.pk}"
+
+    failed_attempts = cache.get(cache_key, 0)
+
+    if failed_attempts >= 5:
+        request.session.pop("mfa_pending_user_id", None)
+        messages.error(
+            request,
+            "ยืนยัน OTP ไม่สำเร็จเกินจำนวนครั้งที่กำหนด กรุณาเข้าสู่ระบบใหม่",
+        )
+        return redirect("home")
+
+    if request.method == "POST":
+        otp = request.POST.get("otp", "").strip()
+
+        # ตรวจสอบ Encryption Key และข้อมูล Secret ก่อนตรวจ OTP
+        try:
+            secret = decrypt_mfa_secret(user.mfa_secret_encrypted)
+        except (ValueError, ImproperlyConfigured):
+            request.session.pop("mfa_pending_user_id", None)
+            messages.error(
+                request,
+                "ระบบยืนยันตัวตนขัดข้อง กรุณาติดต่อผู้ดูแลระบบ",
+            )
+            return redirect("home")
+
+        is_valid = (
+            len(otp) == 6
+            and otp.isdigit()
+            and pyotp.TOTP(secret).verify(otp, valid_window=1)
+        )
+
+        if not is_valid:
+            cache.add(cache_key, 0, timeout=300)
+            cache.incr(cache_key)
+
+            failed_attempts = cache.get(cache_key, 0)
+
+            if failed_attempts >= 5:
+                request.session.pop("mfa_pending_user_id", None)
+                messages.error(
+                    request,
+                    "ยืนยัน OTP ไม่สำเร็จครบ 5 ครั้ง กรุณาเข้าสู่ระบบใหม่",
+                )
+                return redirect("home")
+
+            messages.error(request, "รหัส OTP ไม่ถูกต้อง")
+            return render(request, "users/verify_mfa.html")
+
+        cache.delete(cache_key)
+        request.session.pop("mfa_pending_user_id", None)
+
+        login(request, user)
+        return redirect("home")
+
+    return render(request, "users/verify_mfa.html")
 
 
 def register_view(request):
