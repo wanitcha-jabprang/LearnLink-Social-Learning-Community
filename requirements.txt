@@ -11,5 +11,4 @@ gunicorn
 whitenoise
 pyotp==2.10.0
 cryptography==50.0.2
-redis==8.1.0
 qrcode==8.2
