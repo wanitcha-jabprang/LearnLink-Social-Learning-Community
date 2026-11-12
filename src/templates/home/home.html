@@ -16,7 +16,7 @@
             <section class="card auth-card">
                 <span class="auth-kicker">ยินดีต้อนรับสู่ชุมชน</span>
                 <h2>เข้าสู่ระบบ LearnLink</h2>
-                <p class="auth-subtitle">เข้าสู่ระบบเพื่อไปยังฟีดและชุมชนของคุณ</p>
+                <p class="auth-subtitle">เข้าสู่ระบบเพื่อไปยังฟีดและชุมชนของคุณ บัญชีที่เปิดใช้ MFA ต้องยืนยัน OTP ก่อนเข้าใช้งาน</p>
                 <form class="auth-form" action="{% url 'login' %}" method="post">
                     {% csrf_token %}
                     <label for="login-email">อีเมลหรือชื่อผู้ใช้</label>
@@ -50,7 +50,7 @@
             <section class="card auth-card">
                 <span class="auth-kicker">สร้างบัญชีฟรี</span>
                 <h2>เข้าร่วม LearnLink</h2>
-                <p class="auth-subtitle">กรอกข้อมูลเพื่อเริ่มต้นชุมชนการเรียนรู้ของคุณ</p>
+                <p class="auth-subtitle">กรอกข้อมูลเพื่อเริ่มต้นชุมชนการเรียนรู้ของคุณ หลังสมัครต้องตั้งค่า MFA ก่อนเริ่มใช้งาน</p>
                 <form class="auth-form" action="{% url 'register' %}" method="post">
                     {% csrf_token %}
                     <label for="signup-name">ชื่อที่แสดง</label>
@@ -156,7 +156,15 @@
                         </div>
                         <div class="profile-account-actions">
                             <a class="button-secondary profile-edit" href="#profile-edit">แก้ไขโปรไฟล์</a>
-                            <form class="profile-logout-form" action="{% url 'logout' %}" method="post">{% csrf_token %}<button class="button-secondary profile-logout" type="submit">ออกจากระบบ</button></form>
+                            {% if not request.user.mfa_enabled %}
+                                <a class="button-secondary" href="{% url 'setup_mfa' %}">ตั้งค่า MFA</a>
+                            {% else %}
+                                <span class="button-secondary">เปิดใช้งาน MFA แล้ว</span>
+                            {% endif %}
+                            <form class="profile-logout-form" action="{% url 'logout' %}" method="post">
+                                {% csrf_token %}
+                                <button class="button-secondary profile-logout" type="submit">ออกจากระบบ</button>
+                            </form>
                             <details class="account-delete-confirm">
                                 <summary class="button-danger account-delete-trigger">ลบบัญชี</summary>
                                 <form action="{% url 'delete_account' %}" method="post">

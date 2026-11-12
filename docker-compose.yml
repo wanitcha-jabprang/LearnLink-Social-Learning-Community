@@ -1,3 +1,4 @@
+version: "3.9"
 
 services:
   db:
@@ -38,6 +39,9 @@ services:
     depends_on:
       - db
       - clamav
+      db:
+        condition: service_started
+
     env_file:
       - .env
     working_dir: /app/src
@@ -45,6 +49,31 @@ services:
       CLAMAV_HOST: clamav
       CLAMAV_PORT: 3310
 
+  login-attempt-cleanup:
+    build: .
+    container_name: learnlink-login-attempt-cleanup
+    restart: unless-stopped
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        while true; do
+          if python manage.py cleanup_login_attempts --days 30; then
+            sleep 86400
+          else
+            sleep 60
+          fi
+        done
+    volumes:
+      - .:/app
+    working_dir: /app/src
+    env_file:
+      - .env
+    environment:
+      DB_HOST: db
+      DB_PORT: "3306"
+    depends_on:
+      db:
+        condition: service_started
 volumes:
   mysql_data:
   clamav_data:

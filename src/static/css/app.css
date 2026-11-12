@@ -4017,3 +4017,9 @@ body:has(#app-preview .prototype-page:target, #app-preview .prototype-page :targ
         padding: 18px;
     }
 }
+
+.post-author-link {
+    text-decoration: none;
+    color: inherit;
+    cursor: pointer;
+}

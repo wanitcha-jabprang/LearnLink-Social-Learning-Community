@@ -1,5 +1,5 @@
 from django.contrib import messages
-from django.contrib.auth import authenticate, login, logout
+from django.contrib.auth import authenticate, logout
 from django.contrib.auth.decorators import login_required
 from django.http import Http404
 from django.shortcuts import redirect, render
@@ -23,8 +23,21 @@ def login_view(request):
     if user is None:
         messages.error(request, "อีเมล/ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง")
         return redirect("home")
-    login(request, user)
-    return redirect("home")
+    logout(request)
+    if user.mfa_enabled:
+        if not user.mfa_secret_encrypted:
+            messages.error(
+                request,
+                "บัญชีนี้มีปัญหาการตั้งค่า MFA กรุณาติดต่อผู้ดูแลระบบ",
+            )
+            return redirect("home")
+        request.session["mfa_pending_user_id"] = user.pk
+        request.session.set_expiry(300)
+        return redirect("verify_mfa")
+
+    request.session["mfa_enrollment_user_id"] = user.pk
+    request.session.set_expiry(600)
+    return redirect("setup_mfa")
 
 
 def register_view(request):
@@ -43,8 +56,10 @@ def register_view(request):
             messages.error(request, message)
         return redirect("/#signup-page")
 
-    login(request, user)
-    return redirect("home")
+    logout(request)
+    request.session["mfa_enrollment_user_id"] = user.pk
+    request.session.set_expiry(600)
+    return redirect("setup_mfa")
 
 
 def profile_view(request):
