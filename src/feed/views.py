@@ -1,3 +1,8 @@
+from django.contrib.auth.decorators import login_required
+from django.db.models import Count
+from django.shortcuts import get_object_or_404, redirect
+from django.views.decorators.http import require_POST
+from .models import SpamReport
 from django.db.models import Q
 from django.shortcuts import render
 from django.utils.html import escape
@@ -37,6 +42,8 @@ def rate_limit_feed(max_requests=40, window_seconds=60):
 def home_view(request):
     posts = (
         Post.objects.select_related("user", "community")
+        .annotate(report_count=Count("spam_reports"))
+        .filter(report_count__lt=3)  # Auto Hide สแปมที่โดน Report ตั้งแต่ 3 ครั้งขึ้นไป
         .only(
             "id", "content", "created_at", "community_id",
             "user__id", "user__username", "user__full_name",
