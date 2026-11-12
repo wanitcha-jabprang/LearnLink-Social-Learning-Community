@@ -216,3 +216,45 @@ class PostApiTests(TestCase):
         self.assertEqual(
             list(search_response.context["posts"]), [matching_post]
         )
+
+    def test_post_api_response_only_contains_allowed_fields(self):
+        self.client.force_login(self.author)
+        response = self.client.post(
+            reverse("edit_post", args=[self.post.pk]),
+            data=json.dumps({"content": "Updated post"}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            set(response.json()["post"]),
+            {
+                "id",
+                "content",
+                "author",
+                "community",
+                "created_at",
+                "image_url",
+                "video_url",
+                "likes_count",
+                "comments_count",
+            },
+        )
+
+    def test_comment_api_response_only_contains_allowed_fields(self):
+        self.client.force_login(self.author)
+        response = self.client.post(
+            reverse("create_comment", args=[self.post.pk]),
+            data=json.dumps({"content": "Test comment"}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(
+            set(response.json()["comment"]),
+            {"id", "content", "author", "created_at"},
+        )
+        self.assertEqual(
+            set(response.json()),
+            {"comment", "comments_count"},
+        )

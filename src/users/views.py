@@ -1,40 +1,180 @@
+import hashlib
+import base64
+import hmac
+from io import BytesIO
+from datetime import timedelta
+
+import qrcode
+import pyotp
+from django.contrib.auth import authenticate, login, logout
 from django.contrib import messages
 from django.core.cache import cache
-from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.password_validation import validate_password
 from django.db import transaction
-from django.core.exceptions import ValidationError
+from django.core.exceptions import ImproperlyConfigured, ValidationError
 from django.core.validators import validate_email
+from django.db.models import Q
 from django.shortcuts import get_object_or_404, redirect, render
+from django.utils import timezone
 from django.views.decorators.http import require_POST
 
-from community.models import Community, CommunityMember
-from post.models import Post
-from .forms import ProfileCoverForm, UserProfileForm
-from .models import Follow, User
-from post.models import Post
-from django.db.models import Q
+from community.infrastructure.persistence.models import (
+    Community,
+    CommunityMember,
+)
+from post.infrastructure.persistence.models import Post
+from users.infrastructure.persistence.models import Follow, LoginAttempt, User
+from users.presentation.forms import ProfileCoverForm, UserProfileForm
+from users.security import decrypt_mfa_secret, encrypt_mfa_secret
+
+def reserve_login_attempt(key):
+    now = timezone.now()
+
+    # Create the record if it does not exist.
+    # get_or_create() handles concurrent creation using the unique key.
+    LoginAttempt.objects.get_or_create(
+        key=key,
+        defaults={
+            "attempts": 0,
+            "window_started_at": now,
+        },
+    )
+
+    # Lock the existing record before updating the counter.
+    with transaction.atomic():
+        attempt = LoginAttempt.objects.select_for_update().get(
+            key=key
+        )
+
+        now = timezone.now()
+
+        # Reset the counter after 60 seconds.
+        if now - attempt.window_started_at >= timedelta(seconds=60):
+            attempt.attempts = 0
+            attempt.window_started_at = now
+
+        # Reject requests after 5 attempts.
+        if attempt.attempts >= 5:
+            return False
+
+        # Reserve one attempt before authentication.
+        attempt.attempts += 1
+        attempt.save(
+            update_fields=["attempts", "window_started_at"]
+        )
+
+        return True
+
+
+def release_login_attempt(key):
+    with transaction.atomic():
+        attempt = LoginAttempt.objects.select_for_update().filter(key=key).first()
+        if attempt and attempt.attempts:
+            attempt.attempts -= 1
+            attempt.save(update_fields=["attempts"])
+
+
+def get_mfa_redis_client():
+    """
+    Return the Redis client configured by Django.
+    """
+    return cache._cache.get_client(write=True)
+
+
+def get_mfa_attempts(key):
+    """
+    Read the MFA attempt counter from the same Redis key.
+    """
+    redis_client = get_mfa_redis_client()
+    value = redis_client.get(key)
+
+    if value is None:
+        return 0
+
+    return int(value)
+
+
+def reserve_mfa_attempt(key):
+    """
+    Atomically reserve an OTP attempt.
+    Maximum 5 attempts within 300 seconds.
+    """
+    redis_client = get_mfa_redis_client()
+
+    reserve_script = redis_client.register_script(
+        """
+        local current = tonumber(redis.call('GET', KEYS[1]) or '0')
+
+        if current >= tonumber(ARGV[1]) then
+            return 0
+        end
+
+        local count = redis.call('INCR', KEYS[1])
+
+        if count == 1 then
+            redis.call('EXPIRE', KEYS[1], tonumber(ARGV[2]))
+        end
+
+        return count
+        """
+    )
+
+    result = reserve_script(
+        keys=[key],
+        args=[5, 300],
+        client=redis_client,
+    )
+
+    return bool(result)
+
+
+def release_mfa_attempt(key):
+    """
+    Release one reserved OTP attempt.
+    """
+    redis_client = get_mfa_redis_client()
+
+    release_script = redis_client.register_script(
+        """
+        local current = tonumber(redis.call('GET', KEYS[1]) or '0')
+
+        if current <= 1 then
+            return redis.call('DEL', KEYS[1])
+        end
+
+        return redis.call('DECR', KEYS[1])
+        """
+    )
+
+    release_script(
+        keys=[key],
+        client=redis_client,
+    )
+
 
 
 def login_view(request):
     if request.method != "POST":
         return redirect("home")
 
+    identifier = request.POST.get("identifier", "").strip()
+    password = request.POST.get("password", "")
+
     ip_address = request.META.get("REMOTE_ADDR", "unknown")
-    cache_key = f"login_failed:{ip_address}"
+    normalized_identifier = identifier.casefold()
 
-    failed_attempts = cache.get(cache_key, 0)
+    rate_limit_hash = hashlib.sha256(
+        f"{ip_address}:{normalized_identifier}".encode("utf-8")
+    ).hexdigest()
 
-    if failed_attempts >= 5:
+    if not reserve_login_attempt(rate_limit_hash):
         messages.error(
             request,
             "คุณเข้าสู่ระบบไม่สำเร็จเกินจำนวนครั้งที่กำหนด กรุณาลองใหม่ภายหลัง"
         )
         return redirect("home")
 
-    identifier = request.POST.get("identifier", "").strip()
-    password = request.POST.get("password", "")
     username = identifier
 
     if "@" in identifier:
@@ -44,17 +184,321 @@ def login_view(request):
     user = authenticate(request, username=username, password=password)
 
     if user is None:
-        cache.add(cache_key, 0, timeout=60)
-        cache.incr(cache_key)
         messages.error(
             request,
             "อีเมล/ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง"
         )
         return redirect("home")
 
-    cache.delete(cache_key)
+    release_login_attempt(rate_limit_hash)
+
+    if user.mfa_enabled:
+        if not user.mfa_secret_encrypted:
+            messages.error(
+                request,
+                "บัญชีนี้มีปัญหาการตั้งค่า MFA กรุณาติดต่อผู้ดูแลระบบ"
+            )
+            return redirect("home")
+
+        logout(request)
+        request.session["mfa_pending_user_id"] = user.pk
+        request.session.set_expiry(300)
+
+        return redirect("verify_mfa")
+
     login(request, user)
     return redirect("home")
+
+@login_required(login_url="login")
+def mfa_setup_view(request):
+    if request.user.mfa_enabled:
+        messages.info(request, "บัญชีนี้เปิดใช้งาน MFA อยู่แล้ว")
+        return redirect("home")
+
+    secret_key = "mfa_enrollment_secret"
+    started_key = "mfa_enrollment_started_at"
+
+    started_at = request.session.get(started_key)
+    encrypted_secret = request.session.get(secret_key)
+
+    # Enrollment session expires after 10 minutes.
+    if (
+        not started_at
+        or timezone.now().timestamp() - started_at > 600
+        or not encrypted_secret
+    ):
+        request.session.pop(secret_key, None)
+        request.session.pop(started_key, None)
+
+        try:
+            secret = pyotp.random_base32()
+            encrypted_secret = encrypt_mfa_secret(secret)
+        except (ImproperlyConfigured, ValueError):
+            messages.error(request, "ไม่สามารถเริ่มตั้งค่า MFA ได้ กรุณาติดต่อผู้ดูแลระบบ")
+            return redirect("home")
+
+        request.session[secret_key] = encrypted_secret
+        request.session[started_key] = timezone.now().timestamp()
+
+    try:
+        secret = decrypt_mfa_secret(encrypted_secret)
+    except (ValueError, ImproperlyConfigured):
+        request.session.pop(secret_key, None)
+        request.session.pop(started_key, None)
+        messages.error(request, "ข้อมูลตั้งค่า MFA ไม่ถูกต้อง กรุณาเริ่มใหม่")
+        return redirect("home")
+
+    ip_address = request.META.get("REMOTE_ADDR", "unknown")
+    cache_key = f"mfa_enroll_failed:{ip_address}:{request.user.pk}"
+
+    if request.method == "POST":
+        try:
+            reserved = reserve_mfa_attempt(cache_key)
+        except Exception:
+            messages.error(request, "ระบบยืนยันตัวตนขัดข้อง กรุณาลองใหม่ภายหลัง")
+            return redirect("setup_mfa")
+
+        if not reserved:
+            messages.error(request, "ยืนยัน OTP เกินจำนวนครั้งที่กำหนด กรุณาลองใหม่ภายหลัง")
+            return redirect("setup_mfa")
+
+        otp = request.POST.get("otp", "").strip()
+        is_valid = (
+            len(otp) == 6
+            and otp.isdigit()
+            and pyotp.TOTP(secret).verify(otp, valid_window=1)
+        )
+
+        if not is_valid:
+            messages.error(request, "รหัส OTP ไม่ถูกต้อง")
+        else:
+            try:
+                release_mfa_attempt(cache_key)
+
+                with transaction.atomic():
+                    user = User.objects.select_for_update().get(
+                        pk=request.user.pk
+                    )
+
+                    if user.mfa_enabled:
+                        messages.info(request, "บัญชีนี้เปิดใช้งาน MFA อยู่แล้ว")
+                    else:
+                        user.mfa_secret_encrypted = encrypted_secret
+                        user.mfa_enabled = True
+                        user.save(
+                            update_fields=[
+                                "mfa_secret_encrypted",
+                                "mfa_enabled",
+                            ]
+                        )
+                        messages.success(request, "เปิดใช้งาน MFA สำเร็จแล้ว")
+
+                request.session.pop(secret_key, None)
+                request.session.pop(started_key, None)
+                return redirect("home")
+
+            except Exception:
+                messages.error(
+                    request,
+                    "ไม่สามารถบันทึกการตั้งค่า MFA ได้ กรุณาลองใหม่ภายหลัง",
+                )
+                return redirect("setup_mfa")
+
+    provisioning_uri = pyotp.TOTP(secret).provisioning_uri(
+        name=request.user.email or request.user.username,
+        issuer_name="LearnLink",
+    )
+
+    qr_image = qrcode.make(provisioning_uri)
+    image_buffer = BytesIO()
+    qr_image.save(image_buffer, format="PNG")
+
+    qr_code_data_uri = (
+        "data:image/png;base64,"
+        + base64.b64encode(image_buffer.getvalue()).decode("ascii")
+    )
+
+    response = render(
+        request,
+        "users/setup_mfa.html",
+        {
+            "qr_code_data_uri": qr_code_data_uri,
+            "secret": secret,
+        },
+    )
+    response["Cache-Control"] = "no-store"
+    return response
+
+
+
+def verify_mfa_view(request):
+    pending_user_id = request.session.get("mfa_pending_user_id")
+
+    if not pending_user_id:
+        return redirect("home")
+
+    user = User.objects.filter(
+        pk=pending_user_id,
+        mfa_enabled=True,
+    ).first()
+
+    if not user or not user.mfa_secret_encrypted:
+        request.session.pop("mfa_pending_user_id", None)
+        return redirect("home")
+
+    ip_address = request.META.get("REMOTE_ADDR", "unknown")
+    cache_key = f"mfa_failed:{ip_address}:{user.pk}"
+
+    if request.method != "POST":
+        try:
+            failed_attempts = get_mfa_attempts(cache_key)
+        except Exception:
+            messages.error(
+                request,
+                "ระบบยืนยันตัวตนขัดข้อง กรุณาลองใหม่ภายหลัง",
+            )
+            return redirect("home")
+
+        if failed_attempts >= 5:
+            request.session.pop("mfa_pending_user_id", None)
+            messages.error(
+                request,
+                "ยืนยัน OTP ไม่สำเร็จเกินจำนวนครั้งที่กำหนด กรุณาเข้าสู่ระบบใหม่",
+            )
+            return redirect("home")
+
+        return render(request, "users/verify_mfa.html")
+
+    try:
+        reserved = reserve_mfa_attempt(cache_key)
+    except Exception:
+        messages.error(
+            request,
+            "ระบบยืนยันตัวตนขัดข้อง กรุณาลองใหม่ภายหลัง",
+        )
+        return redirect("home")
+
+    if not reserved:
+        request.session.pop("mfa_pending_user_id", None)
+        messages.error(
+            request,
+            "ยืนยัน OTP ไม่สำเร็จเกินจำนวนครั้งที่กำหนด กรุณาเข้าสู่ระบบใหม่",
+        )
+        return redirect("home")
+
+    otp = request.POST.get("otp", "").strip()
+
+    try:
+        secret = decrypt_mfa_secret(user.mfa_secret_encrypted)
+    except (ValueError, ImproperlyConfigured):
+        try:
+            release_mfa_attempt(cache_key)
+        except Exception:
+            pass
+
+        request.session.pop("mfa_pending_user_id", None)
+        messages.error(
+            request,
+            "ระบบยืนยันตัวตนขัดข้อง กรุณาติดต่อผู้ดูแลระบบ",
+        )
+        return redirect("home")
+
+    totp = pyotp.TOTP(secret)
+
+    matched_step = None
+
+    if len(otp) == 6 and otp.isdigit():
+        current_step = totp.timecode(timezone.now())
+
+        for step in (current_step - 1, current_step, current_step + 1):
+            if step < 0:
+                continue
+
+            if hmac.compare_digest(totp.at(step * totp.interval), otp):
+                matched_step = step
+                break
+
+    if matched_step is None:
+        try:
+            failed_attempts = get_mfa_attempts(cache_key)
+        except Exception:
+            messages.error(
+                request,
+                "ระบบยืนยันตัวตนขัดข้อง กรุณาลองใหม่ภายหลัง",
+            )
+            return redirect("home")
+
+        if failed_attempts >= 5:
+            request.session.pop("mfa_pending_user_id", None)
+            messages.error(
+                request,
+                "ยืนยัน OTP ไม่สำเร็จครบ 5 ครั้ง กรุณาเข้าสู่ระบบใหม่",
+            )
+            return redirect("home")
+
+        messages.error(request, "รหัส OTP ไม่ถูกต้อง")
+        return render(request, "users/verify_mfa.html")
+
+    try:
+        with transaction.atomic():
+            locked_user = User.objects.select_for_update().get(
+                pk=user.pk,
+                mfa_enabled=True,
+            )
+
+            if matched_step <= (
+                locked_user.mfa_last_used_step
+                if locked_user.mfa_last_used_step is not None
+                else -1
+            ):
+                raise ValueError("OTP has already been used")
+
+            locked_user.mfa_last_used_step = matched_step
+            locked_user.save(update_fields=["mfa_last_used_step"])
+
+    except ValueError:
+        try:
+            release_mfa_attempt(cache_key)
+        except Exception:
+            pass
+
+        messages.error(request, "รหัส OTP นี้ถูกใช้ไปแล้ว กรุณารอรหัสใหม่")
+        return render(request, "users/verify_mfa.html")
+
+    except User.DoesNotExist:
+        try:
+            release_mfa_attempt(cache_key)
+        except Exception:
+            pass
+
+        request.session.pop("mfa_pending_user_id", None)
+        return redirect("home")
+
+    except Exception:
+        try:
+            release_mfa_attempt(cache_key)
+        except Exception:
+            pass
+
+        messages.error(
+            request,
+            "ระบบยืนยันตัวตนขัดข้อง กรุณาลองใหม่ภายหลัง",
+        )
+        return redirect("home")
+
+    try:
+        release_mfa_attempt(cache_key)
+    except Exception:
+        messages.error(
+            request,
+            "ระบบยืนยันตัวตนขัดข้อง กรุณาลองใหม่ภายหลัง",
+        )
+        return redirect("home")
+
+    request.session.pop("mfa_pending_user_id", None)
+    login(request, user)
+    return redirect("home")
+
 
 
 
