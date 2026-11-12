@@ -1,3 +1,4 @@
+from django.test import TransactionTestCase
 import tempfile
 import uuid
 from io import BytesIO
@@ -466,3 +467,116 @@ class CommunityWorkflowTests(TestCase):
         self.client.force_login(self.owner)
         profile_response = self.client.get(reverse("profile"), follow=True)
         self.assertNotContains(profile_response, spam_post.content)
+
+class CommunityReviewRegressionTests(TransactionTestCase):
+    def setUp(self):
+        from django.contrib.auth import get_user_model
+        from community.infrastructure.persistence.models import Community, CommunityMember
+        from post.infrastructure.persistence.models import Post
+
+        User = get_user_model()
+        self.owner = User.objects.create_user(username="rev_owner", password="password123")
+        self.outsider1 = User.objects.create_user(username="outsider1", password="password123")
+        self.outsider2 = User.objects.create_user(username="outsider2", password="password123")
+        self.outsider3 = User.objects.create_user(username="outsider3", password="password123")
+
+        self.private_comm = Community.objects.create(
+            name="Private Study Group",
+            description="Members only",
+            is_private=True,
+            invite_code="PRIV8888",
+            owner=self.owner,
+        )
+        CommunityMember.objects.create(community=self.private_comm, user=self.owner)
+
+        self.post = Post.objects.create(
+            user=self.owner,
+            community=self.private_comm,
+            content="Valid study notes inside private community",
+        )
+
+    def test_non_member_cannot_report_post_to_hide_it(self):
+        from django.contrib.messages.storage.fallback import FallbackStorage
+        from django.test import RequestFactory
+        from community.presentation.views import report_item
+        from community.infrastructure.persistence.models import CommunityReport
+
+        factory = RequestFactory()
+
+        for outsider in (self.outsider1, self.outsider2, self.outsider3):
+            request = factory.post(
+                f"/community/{self.private_comm.id}/report/",
+                {
+                    "report_type": "POST",
+                    "target_id": str(self.post.id),
+                    "reason": "Malicious external report",
+                },
+            )
+            request.user = outsider
+            setattr(request, "session", "session")
+            setattr(request, "_messages", FallbackStorage(request))
+
+            response = report_item(request, community_id=self.private_comm.id)
+            self.assertEqual(response.status_code, 403)
+
+        self.post.refresh_from_db()
+        self.assertFalse(self.post.is_hidden)
+        self.assertEqual(CommunityReport.objects.filter(community=self.private_comm).count(), 0)
+
+    def test_migration_0005_migrates_existing_community_members_and_posts(self):
+        from django.db.backends.sqlite3.base import DatabaseWrapper
+        from django.db.migrations.executor import MigrationExecutor
+
+        from django.db import connection
+        cfg = dict(connection.settings_dict)
+        cfg["NAME"] = ":memory:"
+        from django.db import connections
+        test_conn = DatabaseWrapper(cfg, alias="migration_test")
+        connections["migration_test"] = test_conn
+
+        try:
+            executor = MigrationExecutor(test_conn)
+            migrate_from = [("community", "0004_community_image"), ("post", "0003_post_is_hidden")]
+            migrate_to = [("community", "0006_alter_communitydocument_file"), ("post", "0005_restore_community_fk")]
+
+            executor.migrate(migrate_from)
+            old_apps = executor.loader.project_state(migrate_from).apps
+
+            User = old_apps.get_model("users", "User")
+            OldCommunity = old_apps.get_model("community", "Community")
+            OldMember = old_apps.get_model("community", "CommunityMember")
+            OldPost = old_apps.get_model("post", "Post")
+
+            u1 = User.objects.using(test_conn.alias).create(username="mig_owner", password="pw")
+            u2 = User.objects.using(test_conn.alias).create(username="mig_member", password="pw")
+            comm = OldCommunity.objects.using(test_conn.alias).create(
+                name="Legacy Int Community",
+                description="Pre-UUID data",
+                is_private=False,
+                invite_code="LEGACY01",
+                owner=u1,
+            )
+            OldMember.objects.using(test_conn.alias).create(community=comm, user=u1)
+            OldMember.objects.using(test_conn.alias).create(community=comm, user=u2)
+            post = OldPost.objects.using(test_conn.alias).create(
+                user=u1,
+                community=comm,
+                content="Legacy post attached to integer community PK",
+            )
+            old_post_id = post.id
+
+            executor.loader.build_graph()
+            executor.migrate(migrate_to)
+            new_apps = executor.loader.project_state(migrate_to).apps
+
+            NewCommunity = new_apps.get_model("community", "Community")
+            NewMember = new_apps.get_model("community", "CommunityMember")
+            NewPost = new_apps.get_model("post", "Post")
+
+            migrated_comm = NewCommunity.objects.using(test_conn.alias).get(name="Legacy Int Community")
+            self.assertEqual(NewMember.objects.using(test_conn.alias).filter(community=migrated_comm).count(), 2)
+            migrated_post = NewPost.objects.using(test_conn.alias).get(id=old_post_id)
+            self.assertEqual(migrated_post.community_id, migrated_comm.id)
+        finally:
+            test_conn.close()
+            del connections["migration_test"]

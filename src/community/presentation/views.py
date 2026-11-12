@@ -240,6 +240,10 @@ def report_item(request, community_id):
     from post.infrastructure.persistence.models import Post
 
     community = get_object_or_404(Community, id=community_id)
+
+    # 🔒 R-07 Authorization: เฉพาะสมาชิกหรือเจ้าของชุมชนเท่านั้นที่ส่งรายงานได้
+    if community.owner_id != request.user.id and not community.is_member(request.user):
+        return HttpResponseForbidden("403 Forbidden: เฉพาะสมาชิกของชุมชนเท่านั้นที่สามารถส่งรายงานได้")
     report_type = request.POST.get("report_type", "POST")
     target_id = request.POST.get("target_id", "").strip()
     reason = request.POST.get("reason", "").strip()

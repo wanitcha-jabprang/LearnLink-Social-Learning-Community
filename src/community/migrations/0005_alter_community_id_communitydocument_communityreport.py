@@ -9,38 +9,36 @@ from django.db import migrations, models
 
 
 def populate_community_uuids(apps, schema_editor):
+    db_alias = schema_editor.connection.alias
     Community = apps.get_model("community", "Community")
     CommunityMember = apps.get_model("community", "CommunityMember")
+    Post = apps.get_model("post", "Post")
 
     id_to_uuid = {}
-    for community in Community.objects.all():
+    for community in Community.objects.using(db_alias).all():
         new_uuid = uuid.uuid4()
         community.uuid_new = new_uuid
-        community.save(update_fields=["uuid_new"])
+        community.save(using=db_alias, update_fields=["uuid_new"])
         id_to_uuid[community.id] = new_uuid
 
     # อัปเดตตาราง CommunityMember ให้ชี้ไปยัง UUID ใหม่
-    for member in CommunityMember.objects.all():
+    for member in CommunityMember.objects.using(db_alias).all():
         if member.community_id in id_to_uuid:
             member.community_uuid_new = id_to_uuid[member.community_id]
-            member.save(update_fields=["community_uuid_new"])
+            member.save(using=db_alias, update_fields=["community_uuid_new"])
 
-    # อัปเดตตาราง Post ให้ชี้ไปยัง UUID ใหม่ (ถ้ามีข้อมูลเดิม)
-    try:
-        Post = apps.get_model("post", "Post")
-        for post in Post.objects.all():
-            if post.community_id in id_to_uuid and hasattr(post, "community_uuid_new"):
-                post.community_uuid_new = id_to_uuid[post.community_id]
-                post.save(update_fields=["community_uuid_new"])
-    except LookupError:
-        pass
+    # อัปเดตตาราง Post ให้ชี้ไปยัง UUID ใหม่
+    for post in Post.objects.using(db_alias).all():
+        if post.old_community_id in id_to_uuid:
+            post.community_uuid_new = id_to_uuid[post.old_community_id]
+            post.save(using=db_alias, update_fields=["community_uuid_new"])
 
 
 class Migration(migrations.Migration):
 
     dependencies = [
         ("community", "0004_community_image"),
-        ("post", "0001_initial"),
+        ("post", "0004_community_uuid_temp"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
@@ -57,7 +55,7 @@ class Migration(migrations.Migration):
             field=models.UUIDField(null=True),
         ),
 
-        # 2. Data Migration: สร้าง UUID และ Map ความสัมพันธ์เดิม
+        # 2. Data Migration: สร้าง UUID และ Map ความสัมพันธ์เดิมทั้งหมด
         migrations.RunPython(populate_community_uuids, migrations.RunPython.noop),
 
         # 3. ลบ Foreign Key เก่าใน CommunityMember
