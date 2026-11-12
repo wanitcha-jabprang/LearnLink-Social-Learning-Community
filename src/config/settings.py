@@ -32,6 +32,9 @@ DEBUG = os.getenv("DEBUG") == "True"
 # Secure cookies in production (HTTPS only)
 SESSION_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_SECURE = not DEBUG
+# SameSite cookie protection
+SESSION_COOKIE_SAMESITE = "Lax"
+CSRF_COOKIE_SAMESITE = "Lax"
 
 ALLOWED_HOSTS = ['localhost', '127.0.0.1']
 
