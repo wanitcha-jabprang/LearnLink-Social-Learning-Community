@@ -94,6 +94,62 @@ class PostApiTests(TestCase):
         self.assertEqual(self.client.post(reverse("delete_comment", args=[comment.pk])).status_code, 200)
         self.assertFalse(Comment.objects.filter(pk=comment.pk).exists())
 
+    def test_post_api_response_only_contains_allowed_fields(self):
+        self.client.force_login(self.author)
+
+        response = self.client.post(
+            reverse("edit_post", args=[self.post.pk]),
+            data=json.dumps({"content": "Updated post"}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        post_data = response.json()["post"]
+
+        self.assertEqual(
+            set(post_data.keys()),
+            {
+                "id",
+                "content",
+                "author",
+                "community",
+                "created_at",
+                "image_url",
+                "video_url",
+                "likes_count",
+                "comments_count",
+            },
+        )
+
+    def test_comment_api_response_only_contains_allowed_fields(self):
+        self.client.force_login(self.author)
+
+        response = self.client.post(
+            reverse("create_comment", args=[self.post.pk]),
+            data=json.dumps({"content": "Test comment"}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 201)
+
+        comment_data = response.json()["comment"]
+
+        self.assertEqual(
+            set(comment_data.keys()),
+            {
+                "id",
+                "content",
+                "author",
+                "created_at",
+            },
+        )
+
+        self.assertEqual(
+            set(response.json().keys()),
+            {"comment", "comments_count"},
+        )
+
     def test_home_and_profile_render_database_posts(self):
         self.client.force_login(self.author)
         response = self.client.get(reverse("home"))
