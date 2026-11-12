@@ -4,7 +4,7 @@ from io import BytesIO
 from unittest.mock import patch
 
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import TestCase, override_settings
+from django.test import TestCase, TransactionTestCase, override_settings
 from django.urls import reverse
 from PIL import Image
 
@@ -18,13 +18,6 @@ from community.infrastructure.persistence.models import (
 )
 from post.infrastructure.persistence.models import Post
 from users.infrastructure.persistence.models import User
-from django.test import TransactionTestCase
-from django.test import TestCase
-from django.urls import reverse
-
-from community.models import Community, CommunityMember
-from post.models import Post
-from users.models import User
 
 
 class CommunityWorkflowTests(TestCase):
