@@ -637,7 +637,141 @@ class MFAVerificationTests(TestCase):
         )
         self.assertNotIn("_auth_user_id", self.client.session)
 
+class MFAEnrollmentTests(TestCase):
+    def setUp(self):
+        cache.clear()
 
+        self.fake_redis = FakeRedis()
+        self.redis_patcher = patch(
+            "users.views.get_mfa_redis_client",
+            return_value=self.fake_redis,
+        )
+        self.redis_patcher.start()
+        self.addCleanup(self.redis_patcher.stop)
+
+        self.encryption_key = Fernet.generate_key().decode("utf-8")
+
+        self.user = User.objects.create_user(
+            username="mfa_enrollment_user",
+            email="enrollment@example.com",
+            password="StrongPass123!",
+            full_name="MFA Enrollment User",
+            mfa_enabled=False,
+            mfa_secret_encrypted="",
+        )
+
+        self.client.force_login(self.user)
+
+    def test_enrollment_page_generates_qr_without_enabling_mfa(self):
+        with patch.dict(
+            "os.environ",
+            {"MFA_ENCRYPTION_KEY": self.encryption_key},
+        ):
+            response = self.client.get(reverse("setup_mfa"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("data:image/png;base64,", response.context["qr_code_data_uri"])
+        self.assertTrue(response.context["secret"])
+
+        self.user.refresh_from_db()
+        self.assertFalse(self.user.mfa_enabled)
+        self.assertEqual(self.user.mfa_secret_encrypted, "")
+
+        self.assertIn(
+            "mfa_enrollment_secret",
+            self.client.session,
+        )
+
+    def test_invalid_otp_does_not_enable_mfa(self):
+        with patch.dict(
+            "os.environ",
+            {"MFA_ENCRYPTION_KEY": self.encryption_key},
+        ):
+            self.client.get(reverse("setup_mfa"))
+
+            secret = decrypt_mfa_secret(
+                self.client.session["mfa_enrollment_secret"]
+            )
+
+            current_otp = pyotp.TOTP(secret).now()
+            wrong_otp = str((int(current_otp[0]) + 1) % 10) + current_otp[1:]
+
+            response = self.client.post(
+                reverse("setup_mfa"),
+                {"otp": wrong_otp},
+            )
+
+        self.assertEqual(response.status_code, 200)
+
+        self.user.refresh_from_db()
+        self.assertFalse(self.user.mfa_enabled)
+        self.assertEqual(self.user.mfa_secret_encrypted, "")
+
+    def test_valid_otp_enables_mfa(self):
+        with patch.dict(
+            "os.environ",
+            {"MFA_ENCRYPTION_KEY": self.encryption_key},
+        ):
+            self.client.get(reverse("setup_mfa"))
+
+            secret = decrypt_mfa_secret(
+                self.client.session["mfa_enrollment_secret"]
+            )
+
+            otp = pyotp.TOTP(secret).now()
+
+            response = self.client.post(
+                reverse("setup_mfa"),
+                {"otp": otp},
+            )
+
+            self.user.refresh_from_db()
+
+            self.assertRedirects(response, reverse("home"))
+            self.assertTrue(self.user.mfa_enabled)
+            self.assertEqual(
+                decrypt_mfa_secret(self.user.mfa_secret_encrypted),
+                secret,
+            )
+
+        self.assertNotIn(
+            "mfa_enrollment_secret",
+            self.client.session,
+        )
+        self.assertNotIn(
+            "mfa_enrollment_started_at",
+            self.client.session,
+        )
+
+    def test_enrollment_requires_login(self):
+        self.client.logout()
+
+        response = self.client.get(reverse("setup_mfa"))
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("/users/login/", response.url)
+
+    def test_already_enabled_user_cannot_start_enrollment(self):
+        with patch.dict(
+            "os.environ",
+            {"MFA_ENCRYPTION_KEY": self.encryption_key},
+        ):
+            original_secret = encrypt_mfa_secret("JBSWY3DPEHPK3PXP")
+
+        self.user.mfa_enabled = True
+        self.user.mfa_secret_encrypted = original_secret
+        self.user.save()
+
+        response = self.client.get(reverse("setup_mfa"))
+
+        self.assertRedirects(response, reverse("home"))
+
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.mfa_enabled)
+        self.assertEqual(
+            self.user.mfa_secret_encrypted,
+            original_secret,
+        )
 
 class UserAdminSecurityTests(TestCase):
 

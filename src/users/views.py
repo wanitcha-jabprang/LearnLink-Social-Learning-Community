@@ -1,4 +1,7 @@
 import hashlib
+import base64
+from io import BytesIO
+import qrcode
 from django.contrib import messages
 from django.core.cache import cache
 from django.contrib.auth import authenticate, login, logout
@@ -198,7 +201,125 @@ def login_view(request):
     login(request, user)
     return redirect("home")
 
+@login_required(login_url="login")
+def mfa_setup_view(request):
+    if request.user.mfa_enabled:
+        messages.info(request, "บัญชีนี้เปิดใช้งาน MFA อยู่แล้ว")
+        return redirect("home")
 
+    secret_key = "mfa_enrollment_secret"
+    started_key = "mfa_enrollment_started_at"
+
+    started_at = request.session.get(started_key)
+    encrypted_secret = request.session.get(secret_key)
+
+    # Enrollment session expires after 10 minutes.
+    if (
+        not started_at
+        or timezone.now().timestamp() - started_at > 600
+        or not encrypted_secret
+    ):
+        request.session.pop(secret_key, None)
+        request.session.pop(started_key, None)
+
+        try:
+            secret = pyotp.random_base32()
+            encrypted_secret = encrypt_mfa_secret(secret)
+        except (ImproperlyConfigured, ValueError):
+            messages.error(request, "ไม่สามารถเริ่มตั้งค่า MFA ได้ กรุณาติดต่อผู้ดูแลระบบ")
+            return redirect("home")
+
+        request.session[secret_key] = encrypted_secret
+        request.session[started_key] = timezone.now().timestamp()
+
+    try:
+        secret = decrypt_mfa_secret(encrypted_secret)
+    except (ValueError, ImproperlyConfigured):
+        request.session.pop(secret_key, None)
+        request.session.pop(started_key, None)
+        messages.error(request, "ข้อมูลตั้งค่า MFA ไม่ถูกต้อง กรุณาเริ่มใหม่")
+        return redirect("home")
+
+    ip_address = request.META.get("REMOTE_ADDR", "unknown")
+    cache_key = f"mfa_enroll_failed:{ip_address}:{request.user.pk}"
+
+    if request.method == "POST":
+        try:
+            reserved = reserve_mfa_attempt(cache_key)
+        except Exception:
+            messages.error(request, "ระบบยืนยันตัวตนขัดข้อง กรุณาลองใหม่ภายหลัง")
+            return redirect("setup_mfa")
+
+        if not reserved:
+            messages.error(request, "ยืนยัน OTP เกินจำนวนครั้งที่กำหนด กรุณาลองใหม่ภายหลัง")
+            return redirect("setup_mfa")
+
+        otp = request.POST.get("otp", "").strip()
+        is_valid = (
+            len(otp) == 6
+            and otp.isdigit()
+            and pyotp.TOTP(secret).verify(otp, valid_window=1)
+        )
+
+        if not is_valid:
+            messages.error(request, "รหัส OTP ไม่ถูกต้อง")
+        else:
+            try:
+                release_mfa_attempt(cache_key)
+
+                with transaction.atomic():
+                    user = User.objects.select_for_update().get(
+                        pk=request.user.pk
+                    )
+
+                    if user.mfa_enabled:
+                        messages.info(request, "บัญชีนี้เปิดใช้งาน MFA อยู่แล้ว")
+                    else:
+                        user.mfa_secret_encrypted = encrypted_secret
+                        user.mfa_enabled = True
+                        user.save(
+                            update_fields=[
+                                "mfa_secret_encrypted",
+                                "mfa_enabled",
+                            ]
+                        )
+                        messages.success(request, "เปิดใช้งาน MFA สำเร็จแล้ว")
+
+                request.session.pop(secret_key, None)
+                request.session.pop(started_key, None)
+                return redirect("home")
+
+            except Exception:
+                messages.error(
+                    request,
+                    "ไม่สามารถบันทึกการตั้งค่า MFA ได้ กรุณาลองใหม่ภายหลัง",
+                )
+                return redirect("setup_mfa")
+
+    provisioning_uri = pyotp.TOTP(secret).provisioning_uri(
+        name=request.user.email or request.user.username,
+        issuer_name="LearnLink",
+    )
+
+    qr_image = qrcode.make(provisioning_uri)
+    image_buffer = BytesIO()
+    qr_image.save(image_buffer, format="PNG")
+
+    qr_code_data_uri = (
+        "data:image/png;base64,"
+        + base64.b64encode(image_buffer.getvalue()).decode("ascii")
+    )
+
+    response = render(
+        request,
+        "users/setup_mfa.html",
+        {
+            "qr_code_data_uri": qr_code_data_uri,
+            "secret": secret,
+        },
+    )
+    response["Cache-Control"] = "no-store"
+    return response
 
 
 def verify_mfa_view(request):
