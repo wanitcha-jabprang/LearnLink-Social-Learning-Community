@@ -137,7 +137,6 @@ MAILERS = {
 }
 
 AUTH_USER_MODEL = "users.User"
-=======
 """
 Django settings for config project.
 
