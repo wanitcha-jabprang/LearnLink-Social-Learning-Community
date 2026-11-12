@@ -1,6 +1,9 @@
 from django import forms
 
-from common.infrastructure.storage.upload_validation import validate_image
+from common.infrastructure.storage.upload_validation import (
+    reencode_image,
+    validate_image,
+)
 from users.infrastructure.container import get_user_services
 from users.infrastructure.persistence.models import User
 
@@ -13,7 +16,7 @@ class ProfileCoverForm(forms.Form):
         error = validate_image(image)
         if error:
             raise forms.ValidationError(error)
-        return image
+        return reencode_image(image)
 
 
 class UserProfileForm(forms.ModelForm):
@@ -67,4 +70,5 @@ class UserProfileForm(forms.ModelForm):
             error = validate_image(image)
             if error:
                 raise forms.ValidationError(error)
+            return reencode_image(image)
         return image
