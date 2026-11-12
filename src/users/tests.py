@@ -21,7 +21,7 @@ from users.presentation.forms import ProfileCoverForm, UserProfileForm
 
 
 class AuthenticationFlowTests(TestCase):
-    def test_registration_creates_and_logs_in_user(self):
+    def test_registration_starts_required_mfa_enrollment(self):
         response = self.client.post(
             reverse("register"),
             {
@@ -32,12 +32,20 @@ class AuthenticationFlowTests(TestCase):
             },
         )
 
-        self.assertRedirects(response, reverse("home"))
+        self.assertRedirects(
+            response,
+            reverse("setup_mfa"),
+            fetch_redirect_response=False,
+        )
         user = User.objects.get(email="new.learner@example.com")
         self.assertEqual(user.full_name, "ผู้เรียนใหม่")
         self.assertEqual(user.username, "my-chosen-name")
         self.assertTrue(user.check_password("StrongPass123!"))
-        self.assertIn("_auth_user_id", self.client.session)
+        self.assertNotIn("_auth_user_id", self.client.session)
+        self.assertEqual(
+            self.client.session["mfa_enrollment_user_id"],
+            user.pk,
+        )
 
     def test_registration_rejects_duplicate_username_case_insensitively(self):
         User.objects.create_user(
@@ -62,7 +70,7 @@ class AuthenticationFlowTests(TestCase):
             User.objects.filter(email="new.learner@example.com").exists()
         )
 
-    def test_login_accepts_email_and_logout_requires_post(self):
+    def test_login_with_email_starts_required_mfa_enrollment(self):
         user = User.objects.create_user(
             username="learner",
             email="learner@example.com",
@@ -74,13 +82,16 @@ class AuthenticationFlowTests(TestCase):
             {"identifier": user.email, "password": "StrongPass123!"},
         )
 
-        self.assertRedirects(response, reverse("home"))
-        self.assertIn("_auth_user_id", self.client.session)
-        self.assertEqual(self.client.get(reverse("logout")).status_code, 405)
         self.assertRedirects(
-            self.client.post(reverse("logout")), reverse("home")
+            response,
+            reverse("setup_mfa"),
+            fetch_redirect_response=False,
         )
         self.assertNotIn("_auth_user_id", self.client.session)
+        self.assertEqual(
+            self.client.session["mfa_enrollment_user_id"],
+            user.pk,
+        )
 
     def test_profile_can_update_username_and_upload_profile_image(self):
         user = User.objects.create_user(
@@ -411,7 +422,7 @@ from django.test import RequestFactory
 
 class LegacyAuthenticationFlowTests(TestCase):
 
-    def test_registration_creates_and_logs_in_user(self):
+    def test_registration_starts_required_mfa_enrollment(self):
         response = self.client.post(
             reverse("register"),
             {
@@ -422,12 +433,20 @@ class LegacyAuthenticationFlowTests(TestCase):
             },
         )
 
-        self.assertRedirects(response, reverse("home"))
+        self.assertRedirects(
+            response,
+            reverse("setup_mfa"),
+            fetch_redirect_response=False,
+        )
         user = User.objects.get(email="new.learner@example.com")
         self.assertEqual(user.full_name, "ผู้เรียนใหม่")
         self.assertEqual(user.username, "my-chosen-name")
         self.assertTrue(user.check_password("StrongPass123!"))
-        self.assertIn("_auth_user_id", self.client.session)
+        self.assertNotIn("_auth_user_id", self.client.session)
+        self.assertEqual(
+            self.client.session["mfa_enrollment_user_id"],
+            user.pk,
+        )
 
     def test_registration_rejects_duplicate_username_case_insensitively(self):
         User.objects.create_user(
@@ -454,7 +473,7 @@ class LegacyAuthenticationFlowTests(TestCase):
             ).exists()
         )
 
-    def test_login_accepts_email_and_logout_requires_post(self):
+    def test_login_with_email_starts_required_mfa_enrollment(self):
         user = User.objects.create_user(
             username="learner",
             email="learner@example.com",
@@ -470,19 +489,16 @@ class LegacyAuthenticationFlowTests(TestCase):
             },
         )
 
-        self.assertRedirects(response, reverse("home"))
-        self.assertIn("_auth_user_id", self.client.session)
-
-        self.assertEqual(
-            self.client.get(reverse("logout")).status_code,
-            405,
-        )
-
         self.assertRedirects(
-            self.client.post(reverse("logout")),
-            reverse("home"),
+            response,
+            reverse("setup_mfa"),
+            fetch_redirect_response=False,
         )
         self.assertNotIn("_auth_user_id", self.client.session)
+        self.assertEqual(
+            self.client.session["mfa_enrollment_user_id"],
+            user.pk,
+        )
 
     def test_login_blocks_after_five_failed_attempts(self):
         login_data = {
@@ -518,7 +534,7 @@ class LegacyAuthenticationFlowTests(TestCase):
         attempt.refresh_from_db()
         self.assertEqual(attempt.attempts, 5)
 
-    def test_successful_login_does_not_clear_another_account_counter(self):
+    def test_successful_login_starts_mfa_without_clearing_other_counter(self):
         user = User.objects.create_user(
             username="account-two",
             email="account-two@example.com",
@@ -556,8 +572,17 @@ class LegacyAuthenticationFlowTests(TestCase):
             },
         )
 
-        self.assertRedirects(response, reverse("home"))
-        self.assertIn("_auth_user_id", self.client.session)
+        self.assertRedirects(
+            response,
+            reverse("setup_mfa"),
+            fetch_redirect_response=False,
+        )
+
+        self.assertNotIn("_auth_user_id", self.client.session)
+        self.assertEqual(
+            self.client.session["mfa_enrollment_user_id"],
+            user.pk,
+        )
 
         self.assertTrue(
             LoginAttempt.objects.filter(
@@ -971,6 +996,38 @@ class MFAVerificationTests(TestCase):
             self.client.session,
         )
 
+    def test_login_requires_otp_before_authenticating_mfa_user(self):
+        response = self.client.post(
+            reverse("login"),
+            {
+                "identifier": self.user.email,
+                "password": "StrongPass123!",
+            },
+        )
+
+        self.assertRedirects(response, reverse("verify_mfa"))
+        self.assertNotIn("_auth_user_id", self.client.session)
+        self.assertEqual(
+            self.client.session["mfa_pending_user_id"],
+            self.user.pk,
+        )
+
+        otp = pyotp.TOTP(self.secret).now()
+        with patch.dict(
+            "os.environ",
+            {"MFA_ENCRYPTION_KEY": self.encryption_key},
+        ):
+            response = self.client.post(
+                reverse("verify_mfa"),
+                {"otp": otp},
+            )
+
+        self.assertRedirects(response, reverse("home"))
+        self.assertEqual(
+            self.client.session["_auth_user_id"],
+            str(self.user.pk),
+        )
+
     def test_replayed_otp_is_rejected(self):
         self.set_pending_session()
         otp = pyotp.TOTP(self.secret).now()
@@ -1205,13 +1262,50 @@ class MFAEnrollmentTests(TestCase):
             self.client.session,
         )
 
+    def test_registration_completes_mfa_before_authenticating(self):
+        with patch.dict(
+            "os.environ",
+            {"MFA_ENCRYPTION_KEY": self.encryption_key},
+        ):
+            response = self.client.post(
+                reverse("register"),
+                {
+                    "full_name": "ผู้สมัครใหม่",
+                    "username": "new_mfa_user",
+                    "email": "new.mfa@example.com",
+                    "password": "StrongPass123!",
+                },
+            )
+
+            self.assertRedirects(response, reverse("setup_mfa"))
+            user = User.objects.get(username="new_mfa_user")
+            self.assertNotIn("_auth_user_id", self.client.session)
+
+            setup_response = self.client.get(reverse("setup_mfa"))
+            self.assertEqual(setup_response.status_code, 200)
+
+            secret = decrypt_mfa_secret(
+                self.client.session["mfa_enrollment_secret"]
+            )
+            response = self.client.post(
+                reverse("setup_mfa"),
+                {"otp": pyotp.TOTP(secret).now()},
+            )
+
+        self.assertRedirects(response, reverse("home"))
+        user.refresh_from_db()
+        self.assertTrue(user.mfa_enabled)
+        self.assertEqual(
+            self.client.session["_auth_user_id"],
+            str(user.pk),
+        )
+
     def test_enrollment_requires_login(self):
         self.client.logout()
 
         response = self.client.get(reverse("setup_mfa"))
 
-        self.assertEqual(response.status_code, 302)
-        self.assertIn("/users/login/", response.url)
+        self.assertRedirects(response, reverse("home"))
 
     def test_already_enabled_user_cannot_start_enrollment(self):
         with patch.dict(
