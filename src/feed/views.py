@@ -1,6 +1,6 @@
 from django.db.models import Q
 from django.shortcuts import render
-
+from django.utils.html import escape
 from community.models import Community, CommunityMember
 from post.models import Bookmark, Like, Post
 
@@ -92,7 +92,7 @@ def home_view(request):
     else:
         communities = communities.filter(is_private=False)
         
-    return render(
+    response = render(
         request,
         "home/home.html",
         {
@@ -100,7 +100,7 @@ def home_view(request):
             "profile_posts": profile_posts,
             "liked_post_ids": liked_post_ids,
             "saved_post_ids": saved_post_ids,
-            "search_query": query,
+            "search_query": escape(query),
             "searched_communities": searched_communities,
             "saved_only": saved_only,
             "communities": communities.order_by("name"),
@@ -121,9 +121,17 @@ def home_view(request):
                 )
                 if request.user.is_authenticated
                 else set()
-            ),
+           ),
         },
     )
+    response["Content-Security-Policy"] = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://unpkg.com; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+        "img-src 'self' data: blob: https:; "
+        "font-src 'self' https://fonts.gstatic.com data:;"
+    )
+    return response
 
 
 def explore_view(request):
