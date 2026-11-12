@@ -622,3 +622,28 @@ class UserAdminSecurityTests(TestCase):
 
         self.assertNotIn("is_staff", readonly_fields)
         self.assertNotIn("is_superuser", readonly_fields)
+
+    def test_profile_edit_cannot_change_privilege_fields(self):
+        self.client.force_login(self.target_user)
+
+        response = self.client.post(
+            reverse("edit_profile"),
+            {
+                "username": self.target_user.username,
+                "full_name": "Updated Name",
+                "bio": "Updated bio",
+                "is_staff": "True",
+                "is_superuser": "True",
+            },
+        )
+
+        self.assertRedirects(
+            response,
+            "/#profile-page",
+            fetch_redirect_response=False,
+        )
+
+        self.target_user.refresh_from_db()
+        self.assertFalse(self.target_user.is_staff)
+        self.assertFalse(self.target_user.is_superuser)
+        self.assertEqual(self.target_user.full_name, "Updated Name")
