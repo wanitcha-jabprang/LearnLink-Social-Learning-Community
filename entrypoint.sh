@@ -7,7 +7,7 @@ import time, sys
 from django.db import connections
 from django.db.utils import OperationalError
 
-for attempt in range(30):
+for attempt in range(60):
     try:
         connections["default"].ensure_connection()
         print("Database is ready.")
