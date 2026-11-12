@@ -43,6 +43,17 @@
                 <button class="post-menu post-owner-action-button post-delete-action" type="submit">ลบ</button>
             </form>
         </div>
+        {% elif request.user.is_authenticated %}
+        <div class="post-owner-actions">
+            <details class="post-edit-details">
+                <summary class="post-menu" aria-label="ตัวเลือกโพสต์">···</summary>
+                <form action="{% url 'report_post' post.pk %}" method="post">
+                    {% csrf_token %}
+                    <input type="hidden" name="reason" value="Spam">
+                    <button class="post-menu post-owner-action-button post-delete-action" type="submit">รายงานโพสต์</button>
+                </form>
+            </details>
+        </div>
         {% else %}
         <button class="post-menu" type="button" aria-label="ตัวเลือกโพสต์">···</button>
         {% endif %}

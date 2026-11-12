@@ -51,8 +51,8 @@ def home_view(request):
     response = render(request, "home/home.html", context)
     response["Content-Security-Policy"] = (
         "default-src 'self'; "
-        "script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://unpkg.com; "
-        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+        "script-src 'self'; "
+        "style-src 'self' https://fonts.googleapis.com; "
         "img-src 'self' data: blob: https:; "
         "font-src 'self' https://fonts.gstatic.com data:;"
     )
@@ -60,7 +60,6 @@ def home_view(request):
 
 
 def explore_view(request):
-    # เรียก home_view โดยตรง ไม่ใส่ @rate_limit_feed ซ้ำ เพื่อไม่ให้นับโควตาเบิ้ล 2 รอบ
     return home_view(request)
 
 
