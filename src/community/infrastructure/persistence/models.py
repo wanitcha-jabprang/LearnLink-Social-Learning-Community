@@ -1,10 +1,32 @@
+import os
+import uuid
+from django.conf import settings
+from django.core.files.storage import FileSystemStorage
 from django.db import models
+from django.utils.deconstruct import deconstructible
 
 from common.abstracts import TimestampedModel
 from users.infrastructure.persistence.models import User
 
 
+# 🔒 R-04: Private Storage แยกออกจาก public media/ และปิดการสร้าง public URL
+@deconstructible
+class PrivateMediaStorage(FileSystemStorage):
+    def __init__(self, *args, **kwargs):
+        kwargs.setdefault("location", os.path.join(settings.BASE_DIR, "private_media"))
+        kwargs.setdefault("base_url", "")
+        super().__init__(*args, **kwargs)
+
+    def url(self, name):
+        raise ValueError("This file is not accessible via a public URL.")
+
+
+private_storage = PrivateMediaStorage()
+
+
 class Community(TimestampedModel):
+    # 🔒 R-03: ใช้ UUID Primary Key ป้องกัน IDOR / Predictable Sequential IDs
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=100)
     description = models.TextField()
     image = models.ImageField(
@@ -17,6 +39,22 @@ class Community(TimestampedModel):
     def __str__(self):
         return self.name
 
+    # 🔒 R-03 Authorization Helper Methods
+    def is_member(self, user):
+        if not user or not user.is_authenticated:
+            return False
+        if self.owner == user:
+            return True
+        return CommunityMember.objects.filter(community=self, user=user).exists()
+
+    def is_owner(self, user):
+        if not user or not user.is_authenticated:
+            return False
+        return self.owner == user
+
+    def get_member_count(self):
+        return CommunityMember.objects.filter(community=self).count()
+
 
 class CommunityMember(models.Model):
     community = models.ForeignKey(Community, on_delete=models.CASCADE)
@@ -28,3 +66,41 @@ class CommunityMember(models.Model):
 
     def __str__(self):
         return f"{self.user.username} in {self.community.name}"
+
+
+# 🔒 R-04: Model สำหรับจัดเก็บไฟล์เอกสารประจำชุมชนอย่างปลอดภัย (Private Files)
+class CommunityDocument(TimestampedModel):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    community = models.ForeignKey(Community, on_delete=models.CASCADE, related_name="documents")
+    uploaded_by = models.ForeignKey(User, on_delete=models.CASCADE)
+    title = models.CharField(max_length=255)
+    file = models.FileField(upload_to="protected_community_docs/", storage=private_storage)
+    is_private = models.BooleanField(default=True)
+
+    def __str__(self):
+        return f"{self.title} - {self.community.name}"
+
+
+# 🔒 R-07: Model สำหรับระบบรายงานสแปม / เนื้อหาไม่เหมาะสม (Spam & Moderation)
+class CommunityReport(TimestampedModel):
+    REPORT_TYPES = (
+        ("POST", "Report Post"),
+        ("USER", "Report User"),
+    )
+    STATUS_CHOICES = (
+        ("PENDING", "Pending Review"),
+        ("RESOLVED", "Resolved / Hidden"),
+        ("DISMISSED", "Dismissed"),
+    )
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    community = models.ForeignKey(Community, on_delete=models.CASCADE, related_name="reports")
+    reporter = models.ForeignKey(User, on_delete=models.CASCADE, related_name="submitted_reports")
+    reported_user = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True, related_name="reports_against")
+    report_type = models.CharField(max_length=10, choices=REPORT_TYPES, default="POST")
+    target_id = models.CharField(max_length=255, help_text="ID ของโพสต์หรือไอเท็มที่โดนรายงาน")
+    reason = models.TextField()
+    status = models.CharField(max_length=15, choices=STATUS_CHOICES, default="PENDING")
+
+    def __str__(self):
+        return f"[{self.report_type}] Report in {self.community.name} by {self.reporter.username}"

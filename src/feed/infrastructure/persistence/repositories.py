@@ -10,6 +10,7 @@ class FeedRepository:
     def home_context(self, user, query, saved_only):
         clean_query = query.strip()
         posts = (
+
             Post.objects.select_related("user", "community")
             .annotate(report_count=Count("spam_reports"))
             .filter(report_count__lt=3)
@@ -29,6 +30,9 @@ class FeedRepository:
                 "community__is_private",
                 "community__owner_id",
             )
+            Post.objects.filter(is_hidden=False)
+            .select_related("user", "community")
+
             .prefetch_related("comment_set__user", "like_set")
             .order_by("-created_at")
         )
@@ -77,7 +81,7 @@ class FeedRepository:
             )
 
         profile_posts = (
-            Post.objects.filter(user=user)
+            Post.objects.filter(user=user, is_hidden=False)
             .select_related("user", "community")
             .prefetch_related("comment_set__user", "like_set")
             .order_by("-created_at")
