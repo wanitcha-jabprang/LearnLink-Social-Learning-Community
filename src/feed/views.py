@@ -4,7 +4,36 @@ from django.utils.html import escape
 from community.models import Community, CommunityMember
 from post.models import Bookmark, Like, Post
 
+from functools import wraps
+from django.core.cache import cache
+from django.http import HttpResponse
 
+
+def rate_limit_feed(max_requests=40, window_seconds=60):
+    """จำกัดความถี่การเรียก Feed/Search ป้องกัน Bot และ API Abuse"""
+    def decorator(view_func):
+        @wraps(view_func)
+        def _wrapped_view(request, *args, **kwargs):
+            ident = (
+                f"user_{request.user.id}"
+                if request.user.is_authenticated
+                else f"ip_{request.META.get('REMOTE_ADDR', 'unknown')}"
+            )
+            is_search = bool(request.GET.get("q", "").strip())
+            limit = 15 if is_search else max_requests
+            cache_key = f"rl_feed_{'search' if is_search else 'view'}_{ident}"
+
+            count = cache.get(cache_key, 0)
+            if count >= limit:
+                return HttpResponse(
+                    "Too Many Requests: กรุณารอสักครู่แล้วลองใหม่อีกครั้ง",
+                    status=429,
+                )
+            cache.set(cache_key, count + 1, timeout=window_seconds)
+            return view_func(request, *args, **kwargs)
+        return _wrapped_view
+    return decorator
+@rate_limit_feed(max_requests=40, window_seconds=60)
 def home_view(request):
     posts = (
         Post.objects.select_related("user", "community")
@@ -133,6 +162,6 @@ def home_view(request):
     )
     return response
 
-
+@rate_limit_feed(max_requests=40, window_seconds=60)
 def explore_view(request):
     return render(request, "home/explore.html")
