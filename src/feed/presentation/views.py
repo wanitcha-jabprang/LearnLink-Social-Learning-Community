@@ -1,15 +1,55 @@
 from functools import wraps
 
 from django.contrib.auth.decorators import login_required
-from django.core.cache import cache
-from django.db.models import Q
+from django.db import IntegrityError, transaction
+from django.db.models import F, Q
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from feed.infrastructure.container import get_feed_service
-from feed.infrastructure.persistence.models import SpamReport
+from feed.infrastructure.persistence.models import RateLimitBucket, SpamReport
 from post.infrastructure.persistence.models import Post
+
+
+def _increment_rate_limit(key: str, window_seconds: int) -> int:
+    """เพิ่มตัวนับแบบ Atomic บนฐานข้อมูลด้วย SQL UPDATE (count = count + 1)"""
+    now = timezone.now()
+    window_start = now.replace(
+        second=(now.second // window_seconds) * window_seconds
+        if window_seconds < 60
+        else 0,
+        microsecond=0,
+    )
+    if window_seconds >= 60:
+        minutes = window_seconds // 60
+        window_start = window_start.replace(
+            minute=(now.minute // minutes) * minutes
+        )
+
+    with transaction.atomic():
+        updated = RateLimitBucket.objects.filter(
+            key=key, window_start=window_start
+        ).update(count=F("count") + 1)
+        if updated:
+            return RateLimitBucket.objects.values_list(
+                "count", flat=True
+            ).get(key=key)
+
+        try:
+            with transaction.atomic():
+                RateLimitBucket.objects.create(
+                    key=key, count=1, window_start=window_start
+                )
+                return 1
+        except IntegrityError:
+            RateLimitBucket.objects.filter(key=key).update(
+                count=F("count") + 1, window_start=window_start
+            )
+            return RateLimitBucket.objects.values_list(
+                "count", flat=True
+            ).get(key=key)
 
 
 def rate_limit_feed(max_requests=40, window_seconds=60):
@@ -25,18 +65,9 @@ def rate_limit_feed(max_requests=40, window_seconds=60):
             )
             is_search = bool(request.GET.get("q", "").strip())
             limit = 15 if is_search else max_requests
-            cache_key = f"rl_feed_{'search' if is_search else 'view'}_{ident}"
+            bucket_key = f"rl_feed_{'search' if is_search else 'view'}_{ident}"
 
-            # ใช้ cache.add และ cache.incr เพื่อให้การนับเป็น Atomic ปลอดภัยต่อ Multi-worker
-            if cache.add(cache_key, 1, timeout=window_seconds):
-                count = 1
-            else:
-                try:
-                    count = cache.incr(cache_key)
-                except ValueError:
-                    cache.set(cache_key, 1, timeout=window_seconds)
-                    count = 1
-
+            count = _increment_rate_limit(bucket_key, window_seconds)
             if count > limit:
                 return HttpResponse(
                     "Too Many Requests: กรุณารอสักครู่แล้วลองใหม่อีกครั้ง",
