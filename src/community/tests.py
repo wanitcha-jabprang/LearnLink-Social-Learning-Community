@@ -580,3 +580,82 @@ class CommunityReviewRegressionTests(TransactionTestCase):
         finally:
             test_conn.close()
             del connections["migration_test"]
+
+    def test_rejects_unsupported_report_type(self):
+        from django.contrib.messages.storage.fallback import FallbackStorage
+        from django.test import RequestFactory
+        from community.presentation.views import report_item
+        from community.infrastructure.persistence.models import CommunityReport
+
+        factory = RequestFactory()
+        request = factory.post(
+            f"/community/{self.private_comm.id}/report/",
+            {
+                "report_type": "UNSUPPORTED_TYPE",
+                "target_id": str(self.post.id),
+                "reason": "Invalid report type test",
+            },
+        )
+        request.user = self.owner
+        setattr(request, "session", "session")
+        setattr(request, "_messages", FallbackStorage(request))
+
+        report_item(request, community_id=self.private_comm.id)
+        self.assertEqual(CommunityReport.objects.filter(community=self.private_comm).count(), 0)
+
+    def test_user_report_requires_valid_community_member_and_links_reported_user(self):
+        from django.contrib.messages.storage.fallback import FallbackStorage
+        from django.test import RequestFactory
+        from community.presentation.views import report_item
+        from community.infrastructure.persistence.models import CommunityMember, CommunityReport
+
+        factory = RequestFactory()
+
+        # 1) รายงาน target_id ที่ไม่มีผู้ใช้จริง -> ต้องไม่สร้างเรคคอร์ด
+        req_fake = factory.post(
+            f"/community/{self.private_comm.id}/report/",
+            {
+                "report_type": "USER",
+                "target_id": "999999",
+                "reason": "Non-existent user",
+            },
+        )
+        req_fake.user = self.owner
+        setattr(req_fake, "session", "session")
+        setattr(req_fake, "_messages", FallbackStorage(req_fake))
+        report_item(req_fake, community_id=self.private_comm.id)
+        self.assertEqual(CommunityReport.objects.filter(community=self.private_comm, report_type="USER").count(), 0)
+
+        # 2) รายงานผู้ใช้ที่มีอยู่จริงแต่ไม่ได้อยู่ในชุมชน -> ต้องไม่สร้างเรคคอร์ด
+        req_non_member = factory.post(
+            f"/community/{self.private_comm.id}/report/",
+            {
+                "report_type": "USER",
+                "target_id": str(self.outsider1.id),
+                "reason": "User not in community",
+            },
+        )
+        req_non_member.user = self.owner
+        setattr(req_non_member, "session", "session")
+        setattr(req_non_member, "_messages", FallbackStorage(req_non_member))
+        report_item(req_non_member, community_id=self.private_comm.id)
+        self.assertEqual(CommunityReport.objects.filter(community=self.private_comm, report_type="USER").count(), 0)
+
+        # 3) รายงานสมาชิกในชุมชนจริง -> ต้องบันทึกสำเร็จและเชื่อม reported_user ถูกต้อง
+        CommunityMember.objects.create(community=self.private_comm, user=self.outsider1)
+        req_valid = factory.post(
+            f"/community/{self.private_comm.id}/report/",
+            {
+                "report_type": "USER",
+                "target_id": str(self.outsider1.id),
+                "reason": "Spamming in community chat",
+            },
+        )
+        req_valid.user = self.owner
+        setattr(req_valid, "session", "session")
+        setattr(req_valid, "_messages", FallbackStorage(req_valid))
+        report_item(req_valid, community_id=self.private_comm.id)
+
+        report = CommunityReport.objects.get(community=self.private_comm, report_type="USER")
+        self.assertEqual(report.reported_user_id, self.outsider1.id)
+        self.assertEqual(report.target_id, str(self.outsider1.id))

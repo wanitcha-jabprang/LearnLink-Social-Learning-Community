@@ -244,16 +244,22 @@ def report_item(request, community_id):
     # 🔒 R-07 Authorization: เฉพาะสมาชิกหรือเจ้าของชุมชนเท่านั้นที่ส่งรายงานได้
     if community.owner_id != request.user.id and not community.is_member(request.user):
         return HttpResponseForbidden("403 Forbidden: เฉพาะสมาชิกของชุมชนเท่านั้นที่สามารถส่งรายงานได้")
-    report_type = request.POST.get("report_type", "POST")
+    report_type = request.POST.get("report_type", "POST").strip().upper()
     target_id = request.POST.get("target_id", "").strip()
     reason = request.POST.get("reason", "").strip()
+
+    valid_report_types = {choice[0] for choice in CommunityReport.REPORT_TYPES}
+    if report_type not in valid_report_types:
+        messages.error(request, "ประเภทการรายงานไม่ถูกต้อง")
+        return _redirect_to(request, f"/#community-{community_id}")
 
     if not reason or not target_id:
         messages.error(request, "กรุณากรอกข้อมูลการรายงานให้ครบถ้วน")
         return _redirect_to(request, f"/#community-{community_id}")
 
-    # 1. ตรวจสอบว่าโพสต์อยู่ในชุมชนนี้จริงหรือไม่ (กรณีรายงาน POST)
+    # 1. ตรวจสอบความถูกต้องของ target ตามประเภทการรายงาน
     target_post = None
+    target_user = None
     if report_type == "POST":
         try:
             target_post = Post.objects.filter(id=target_id, community=community).first()
@@ -263,14 +269,32 @@ def report_item(request, community_id):
         if not target_post:
             messages.error(request, "ไม่พบโพสต์นี้ในชุมชนที่ระบุ")
             return _redirect_to(request, f"/#community-{community_id}")
+    elif report_type == "USER":
+        from django.contrib.auth import get_user_model
+        UserModel = get_user_model()
+        try:
+            target_user = UserModel.objects.filter(id=target_id).first()
+        except (ValueError, TypeError):
+            target_user = None
 
-    # 2. ป้องกันการนับรายงานซ้ำจากผู้ใช้คนเดิม
+        if not target_user or (community.owner_id != target_user.id and not community.is_member(target_user)):
+            messages.error(request, "ไม่พบผู้ใช้ที่ต้องการรายงานในชุมชนนี้")
+            return _redirect_to(request, f"/#community-{community_id}")
+
+        if target_user.id == request.user.id:
+            messages.error(request, "ไม่สามารถรายงานบัญชีของตนเองได้")
+            return _redirect_to(request, f"/#community-{community_id}")
+
+    # 2. ป้องกันการนับรายงานซ้ำจากผู้ใช้คนเดิม และผูก reported_user เมื่อเป็นการรายงานผู้ใช้
     _, created = CommunityReport.objects.get_or_create(
         community=community,
         reporter=request.user,
         report_type=report_type,
         target_id=str(target_id),
-        defaults={"reason": reason},
+        defaults={
+            "reason": reason,
+            "reported_user": target_user,
+        },
     )
 
     if not created:
