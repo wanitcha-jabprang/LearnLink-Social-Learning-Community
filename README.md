@@ -4,7 +4,7 @@ LearnLink คือเว็บชุมชนสำหรับผู้เร�
 
 ## ลิงก์ระบบ
 
-- **Production URL:** [ลิงก์หลัง Deploy](https://learnlink-social-learning-community-production.up.railway.app/)
+- **Production URL:** https://learnlink-social-learning-community-production.up.railway.app/
 
 ## ฟีเจอร์หลัก
 
