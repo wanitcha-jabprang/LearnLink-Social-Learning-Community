@@ -21,6 +21,8 @@ COPY . .
 
 WORKDIR /app/src
 
+RUN python manage.py collectstatic --noinput
+
 COPY entrypoint.sh /entrypoint.sh
 
 # แปลง Windows CRLF เป็น Linux LF และกำหนดสิทธิ์ execute
