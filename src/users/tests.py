@@ -21,6 +21,16 @@ from users.presentation.forms import ProfileCoverForm, UserProfileForm
 
 
 class AuthenticationFlowTests(TestCase):
+    def setUp(self):
+        super().setUp()
+        scanner = patch(
+            "common.infrastructure.storage."
+            "upload_validation.scan_uploaded_file",
+            return_value=None,
+        )
+        scanner.start()
+        self.addCleanup(scanner.stop)
+
     def test_registration_starts_required_mfa_enrollment(self):
         response = self.client.post(
             reverse("register"),
@@ -420,6 +430,15 @@ from django.contrib.auth.models import Permission
 from django.test import RequestFactory
 
 class LegacyAuthenticationFlowTests(TestCase):
+    def setUp(self):
+        super().setUp()
+        scanner = patch(
+            "common.infrastructure.storage."
+            "upload_validation.scan_uploaded_file",
+            return_value=None,
+        )
+        scanner.start()
+        self.addCleanup(scanner.stop)
 
     def test_registration_starts_required_mfa_enrollment(self):
         response = self.client.post(

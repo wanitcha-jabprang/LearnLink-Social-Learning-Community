@@ -18,6 +18,14 @@ from users.infrastructure.persistence.models import User
 
 class CommunityWorkflowTests(TestCase):
     def setUp(self):
+        super().setUp()
+        scanner = patch(
+            "common.infrastructure.storage."
+            "upload_validation.scan_uploaded_file",
+            return_value=None,
+        )
+        scanner.start()
+        self.addCleanup(scanner.stop)
         self.owner = User.objects.create_user(
             username="owner",
             email="owner@example.com",

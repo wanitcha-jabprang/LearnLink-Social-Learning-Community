@@ -123,7 +123,7 @@ def validate_image(image):
                 detected_format = img.format
 
                 if detected_format not in ALLOWED_IMAGE_FORMATS:
-                    return "รองรับเฉพาะไฟล์ JPEG, PNG และ WEBP"
+                    return "รองรับเฉพาะไฟล์รูปภาพ JPEG, PNG และ WEBP"
 
                 expected_mime = ALLOWED_IMAGE_FORMATS[detected_format]
 
@@ -139,12 +139,13 @@ def validate_image(image):
 
         return None
 
+    except (Image.DecompressionBombError, Image.DecompressionBombWarning):
+        return "รูปภาพมีขนาดพิกเซลเกินกำหนด"
+
     except (
         UnidentifiedImageError,
         OSError,
         ValueError,
-        Image.DecompressionBombError,
-        Image.DecompressionBombWarning,
     ):
         return "ไฟล์รูปภาพไม่ถูกต้อง"
 
@@ -167,7 +168,9 @@ def reencode_image(image):
 
             with Image.open(image) as source:
                 if source.format not in ALLOWED_IMAGE_FORMATS:
-                    raise ValueError("รองรับเฉพาะไฟล์ JPEG, PNG และ WEBP")
+                    raise ValueError(
+                        "รองรับเฉพาะไฟล์รูปภาพ JPEG, PNG และ WEBP"
+                    )
 
                 if getattr(source, "is_animated", False):
                     raise ValueError("ไม่รองรับรูปภาพเคลื่อนไหว")
@@ -249,6 +252,9 @@ def validate_video(video):
 
     if video.size == 0:
         return "ไฟล์วิดีโอว่างเปล่า"
+
+    if not video.content_type.startswith("video/"):
+        return "กรุณาเลือกไฟล์วิดีโอ"
 
     if video.content_type not in ALLOWED_VIDEO_TYPES:
         return "รองรับเฉพาะไฟล์ MP4 และ WEBM"

@@ -1,6 +1,7 @@
 import json
 from types import SimpleNamespace
 
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 from django.urls import reverse
 
@@ -146,7 +147,11 @@ class PostApiTests(TestCase):
         )
 
     def test_video_validation_accepts_valid_upload(self):
-        video = SimpleNamespace(size=1024, content_type="video/mp4")
+        video = SimpleUploadedFile(
+            "valid.mp4",
+            b"\x00\x00\x00\x18ftypisom",
+            content_type="video/mp4",
+        )
 
         self.assertIsNone(validate_video(video))
 
