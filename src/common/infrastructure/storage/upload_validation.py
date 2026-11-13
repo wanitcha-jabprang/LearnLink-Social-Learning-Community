@@ -96,7 +96,9 @@ def scan_uploaded_file(uploaded_file):
 
     except (OSError, socket.timeout, ValueError) as error:
         logger.warning(
-            "ClamAV scan unavailable (%s)",
+            "ClamAV scan unavailable at %s:%s (%s)",
+            CLAMAV_HOST,
+            CLAMAV_PORT,
             type(error).__name__,
         )
         return "ระบบสแกนไวรัสไม่พร้อมใช้งาน กรุณาลองใหม่ภายหลัง"
