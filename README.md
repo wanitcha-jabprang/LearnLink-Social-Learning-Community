@@ -4,7 +4,7 @@ LearnLink คือเว็บชุมชนสำหรับผู้เร�
 
 ## ลิงก์ระบบ
 
-- **Production URL:** https://learnlink-social-learning-community-production.up.railway.app/
+- **Production URL:** https://learnlink-social-learning-community-production.up.railway.app/ กดรีหน้าเว็บ2-3ครั้งจนกว่าจะขึ้น เนื่องจากfree plan Railway Serverless จะพัก service หลังไม่มี outbound traffic ประมาณ 5–10 นาที 
 
 ## ฟีเจอร์หลัก
 
