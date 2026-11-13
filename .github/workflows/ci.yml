@@ -1,7 +1,10 @@
-name: Pull request checks
+name: CI and Railway deployment
 
 on:
   pull_request:
+  push:
+    branches:
+      - main
 
 permissions:
   contents: read
@@ -66,3 +69,36 @@ jobs:
 
       - name: Build application image
         run: docker build --tag learnlink:pull-request .
+
+  deploy-railway:
+    name: Deploy to Railway
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs:
+      - python-checks
+      - docker-build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Validate Railway configuration
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          RAILWAY_SERVICE_ID: ${{ vars.RAILWAY_SERVICE_ID }}
+          RAILWAY_ENVIRONMENT: ${{ vars.RAILWAY_ENVIRONMENT }}
+        run: |
+          test -n "$RAILWAY_TOKEN" || { echo "::error::Add RAILWAY_TOKEN as a GitHub Actions secret."; exit 1; }
+          test -n "$RAILWAY_SERVICE_ID" || { echo "::error::Add RAILWAY_SERVICE_ID as a GitHub Actions variable."; exit 1; }
+          test -n "$RAILWAY_ENVIRONMENT" || { echo "::error::Add RAILWAY_ENVIRONMENT as a GitHub Actions variable."; exit 1; }
+
+      - name: Install Railway CLI
+        run: npm install --global @railway/cli
+
+      - name: Deploy application
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          RAILWAY_SERVICE_ID: ${{ vars.RAILWAY_SERVICE_ID }}
+          RAILWAY_ENVIRONMENT: ${{ vars.RAILWAY_ENVIRONMENT }}
+        run: railway up --ci --service "$RAILWAY_SERVICE_ID" --environment "$RAILWAY_ENVIRONMENT"
