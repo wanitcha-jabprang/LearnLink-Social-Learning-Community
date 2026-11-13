@@ -1,4 +1,4 @@
-name: CI and Railway deployment
+name: CI, DAST, and Railway deployment
 
 on:
   pull_request:
@@ -71,7 +71,7 @@ jobs:
         run: docker build --tag learnlink:pull-request .
 
   deploy-railway:
-    name: Deploy to Railway
+    name: Deploy to Railway production
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs:
       - python-checks
@@ -88,17 +88,54 @@ jobs:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
           RAILWAY_SERVICE_ID: ${{ vars.RAILWAY_SERVICE_ID }}
           RAILWAY_ENVIRONMENT: ${{ vars.RAILWAY_ENVIRONMENT }}
+          DAST_TARGET_URL: ${{ vars.DAST_TARGET_URL }}
         run: |
           test -n "$RAILWAY_TOKEN" || { echo "::error::Add RAILWAY_TOKEN as a GitHub Actions secret."; exit 1; }
           test -n "$RAILWAY_SERVICE_ID" || { echo "::error::Add RAILWAY_SERVICE_ID as a GitHub Actions variable."; exit 1; }
           test -n "$RAILWAY_ENVIRONMENT" || { echo "::error::Add RAILWAY_ENVIRONMENT as a GitHub Actions variable."; exit 1; }
+          test -n "$DAST_TARGET_URL" || { echo "::error::Add DAST_TARGET_URL as a GitHub Actions variable."; exit 1; }
+          case "$DAST_TARGET_URL" in
+            https://*.up.railway.app) ;;
+            *) echo "::error::DAST_TARGET_URL must be the HTTPS Railway production domain."; exit 1 ;;
+          esac
 
       - name: Install Railway CLI
         run: npm install --global @railway/cli
 
-      - name: Deploy application
+      - name: Deploy production application
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
           RAILWAY_SERVICE_ID: ${{ vars.RAILWAY_SERVICE_ID }}
           RAILWAY_ENVIRONMENT: ${{ vars.RAILWAY_ENVIRONMENT }}
         run: railway up --ci --service "$RAILWAY_SERVICE_ID" --environment "$RAILWAY_ENVIRONMENT"
+
+  dast-production:
+    name: OWASP ZAP production baseline scan
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs:
+      - deploy-railway
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Wait for production application
+        env:
+          DAST_TARGET_URL: ${{ vars.DAST_TARGET_URL }}
+        run: |
+          for attempt in $(seq 1 30); do
+            if curl --silent --fail "$DAST_TARGET_URL" --output /dev/null; then
+              echo "Production application is responding."
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::Production application did not respond within 5 minutes."
+          exit 1
+
+      - name: Run OWASP ZAP baseline scan
+        uses: zaproxy/action-baseline@v0.15.0
+        with:
+          target: ${{ vars.DAST_TARGET_URL }}
+          allow_issue_writing: false
+          fail_action: true
+          artifact_name: zap-production-baseline-report
