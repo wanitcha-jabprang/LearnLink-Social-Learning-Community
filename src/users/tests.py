@@ -2,6 +2,7 @@ import tempfile
 from io import BytesIO
 from unittest.mock import patch
 
+from django.contrib.messages import get_messages
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 from django.urls import reverse
@@ -234,6 +235,47 @@ class AuthenticationFlowTests(TestCase):
         self.assertIn("10 MB", str(profile_form.errors["profile_image"]))
         self.assertFalse(cover_valid)
         self.assertIn("10 MB", str(cover_form.errors["profile_cover"]))
+
+    def test_profile_image_upload_fails_closed_when_clamav_is_unavailable(self):
+        user = User.objects.create_user(
+            username="scanneruser",
+            email="scanner@example.com",
+            password="StrongPass123!",
+            full_name="ผู้เรียน",
+        )
+        self.client.force_login(user)
+        image_file = BytesIO()
+        Image.new("RGB", (2, 2), color="blue").save(
+            image_file,
+            format="PNG",
+        )
+        image = SimpleUploadedFile(
+            "profile.png",
+            image_file.getvalue(),
+            content_type="image/png",
+        )
+        scan_error = "ระบบสแกนไวรัสไม่พร้อมใช้งาน กรุณาลองใหม่ภายหลัง"
+
+        with patch(
+            "common.infrastructure.storage."
+            "upload_validation.scan_uploaded_file",
+            return_value=scan_error,
+        ):
+            response = self.client.post(
+                reverse("edit_profile"),
+                {
+                    "username": user.username,
+                    "full_name": user.full_name,
+                    "bio": "",
+                    "profile_image": image,
+                },
+            )
+
+        self.assertRedirects(response, "/#profile-page")
+        user.refresh_from_db()
+        self.assertFalse(user.profile_image)
+        messages = list(get_messages(response.wsgi_request))
+        self.assertIn(scan_error, [str(message) for message in messages])
 
     def test_image_validation_rejects_corrupted_file(self):
         image = SimpleUploadedFile(

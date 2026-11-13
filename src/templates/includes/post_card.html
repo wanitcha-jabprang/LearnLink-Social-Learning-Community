@@ -62,10 +62,8 @@
                         <input type="hidden" name="report_type" value="POST">
                         <input type="hidden" name="target_id" value="{{ post.pk }}">
                         <input type="hidden" name="reason" value="ข้อความสแปม / คำไม่เหมาะสม">
-                        <button type="submit" onclick="return confirm('คุณต้องการรายงานโพสต์นี้ใช่หรือไม่?');" 
-                                style="width: 100%; text-align: left; background: none; border: none; padding: 10px 14px; font-size: 0.9rem; color: #dc3545; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: background 0.2s;"
-                                onmouseover="this.style.backgroundColor='#fff5f5'" 
-                                onmouseout="this.style.backgroundColor='transparent'">
+                        <button type="submit" class="post-report-button" data-confirm="คุณต้องการรายงานโพสต์นี้ใช่หรือไม่?"
+                                style="width: 100%; text-align: left; border: none; padding: 10px 14px; font-size: 0.9rem; color: #dc3545; cursor: pointer; display: flex; align-items: center; gap: 8px;">
                             <span>🚩</span> รายงานโพสต์
                         </button>
                     </form>

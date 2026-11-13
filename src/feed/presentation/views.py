@@ -108,15 +108,7 @@ def home_view(request):
         request.GET.get("q", ""),
         request.GET.get("saved") == "1",
     )
-    response = render(request, "home/home.html", context)
-    response["Content-Security-Policy"] = (
-        "default-src 'self'; "
-        "script-src 'self' 'unsafe-inline'; "
-        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
-        "img-src 'self' data: blob: https:; "
-        "font-src 'self' https://fonts.gstatic.com data:;"
-    )
-    return response
+    return render(request, "home/home.html", context)
 
 
 def explore_view(request):

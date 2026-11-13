@@ -1,4 +1,5 @@
 ﻿
+import logging
 import os
 import socket
 import struct
@@ -12,10 +13,16 @@ from PIL import Image, ImageOps, UnidentifiedImageError
 MAX_IMAGE_SIZE = 10 * 1024 * 1024
 MAX_VIDEO_SIZE = 100 * 1024 * 1024
 
-CLAMAV_HOST = os.getenv("CLAMAV_HOST", "clamav")
+CLAMAV_HOST = os.getenv("CLAMAV_HOST", "clamav").strip() or "clamav"
+if (
+    os.getenv("RAILWAY_ENVIRONMENT_ID")
+    or os.getenv("RAILWAY_ENVIRONMENT_NAME")
+) and "." not in CLAMAV_HOST:
+    CLAMAV_HOST = f"{CLAMAV_HOST}.railway.internal"
 CLAMAV_PORT = int(os.getenv("CLAMAV_PORT", "3310"))
 CLAMAV_TIMEOUT = 120
 CLAMAV_CHUNK_SIZE = 64 * 1024
+logger = logging.getLogger(__name__)
 
 ALLOWED_IMAGE_FORMATS = {
     "JPEG": "image/jpeg",
@@ -87,10 +94,18 @@ def scan_uploaded_file(uploaded_file):
 
         return "ระบบสแกนไวรัสไม่สามารถตรวจสอบไฟล์ได้"
 
-    except (OSError, socket.timeout, ValueError):
+    except (OSError, socket.timeout, ValueError) as error:
+        logger.warning(
+            "ClamAV scan unavailable (%s)",
+            type(error).__name__,
+        )
         return "ระบบสแกนไวรัสไม่พร้อมใช้งาน กรุณาลองใหม่ภายหลัง"
 
-    except Exception:
+    except Exception as error:
+        logger.error(
+            "ClamAV scan failed (%s)",
+            type(error).__name__,
+        )
         return "เกิดข้อผิดพลาดระหว่างตรวจสอบไวรัส"
 
     finally:

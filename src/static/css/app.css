@@ -2951,6 +2951,14 @@ body:has(#app-preview .prototype-page:target, #app-preview .prototype-page :targ
     font-weight: 600;
 }
 
+.post-owner-actions .post-report-button {
+    background: transparent;
+}
+
+.post-owner-actions .post-report-button:hover {
+    background: #fff5f5;
+}
+
 .post-stats a {
     color: inherit;
 }

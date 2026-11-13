@@ -1,0 +1,18 @@
+# Fail the scan for missing or weakened security controls.
+10010	FAIL	(Cookie No HttpOnly Flag)
+10011	FAIL	(Cookie Without Secure Flag)
+10020	FAIL	(Anti-clickjacking Header)
+10021	FAIL	(X-Content-Type-Options Header Missing)
+10035	FAIL	(Strict-Transport-Security Header Not Set)
+10038	FAIL	(Content Security Policy Header Not Set)
+10054	FAIL	(Cookie without SameSite Attribute)
+10063	FAIL	(Permissions Policy Header Not Set)
+10098	FAIL	(Cross-Domain Misconfiguration)
+
+# Advisory or application-context findings; retain them in the report without failing CI.
+10015	FAIL	(Re-examine Cache-control Directives)
+10049	INFO	(Non-Storable Content)
+10055	FAIL	(CSP: Failure to Define Directive with No Fallback)
+10112	INFO	(Session Management Response Identified)
+90003	INFO	(Sub Resource Integrity Attribute Missing on Google Fonts)
+90004	INFO	(Cross-Origin-Embedder-Policy not enabled because external font embeds are used)

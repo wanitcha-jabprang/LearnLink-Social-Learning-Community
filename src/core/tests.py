@@ -10,6 +10,7 @@ from django.utils import timezone
 
 from core.infrastructure.persistence.models import AuditEvent
 from core.middleware import AuditLogMiddleware
+from core.security_middleware import SecurityHeadersMiddleware
 
 User = get_user_model()
 
@@ -96,3 +97,40 @@ class AuditLogMiddlewareTests(TestCase):
 
         self.assertFalse(AuditEvent.objects.filter(pk=old_event.pk).exists())
         self.assertTrue(AuditEvent.objects.filter(pk=recent_event.pk).exists())
+
+
+class SecurityHeadersMiddlewareTests(TestCase):
+    def setUp(self):
+        self.factory = RequestFactory()
+
+    def test_sets_security_headers_and_prevents_html_caching(self):
+        middleware = SecurityHeadersMiddleware(
+            lambda request: HttpResponse("<html></html>")
+        )
+
+        response = middleware(self.factory.get("/"))
+
+        self.assertIn("base-uri 'self'", response["Content-Security-Policy"])
+        self.assertIn(
+            "frame-ancestors 'none'",
+            response["Content-Security-Policy"],
+        )
+        self.assertEqual(
+            response["Permissions-Policy"],
+            "camera=(), geolocation=(), microphone=()",
+        )
+        self.assertEqual(response["Cache-Control"], "no-store")
+
+    def test_preserves_static_asset_cache_policy(self):
+        def serve_static(request):
+            response = HttpResponse("body")
+            response["Cache-Control"] = "public, max-age=3600"
+            return response
+
+        middleware = SecurityHeadersMiddleware(serve_static)
+        response = middleware(self.factory.get("/static/app.css"))
+
+        self.assertEqual(
+            response["Cache-Control"],
+            "public, max-age=3600",
+        )

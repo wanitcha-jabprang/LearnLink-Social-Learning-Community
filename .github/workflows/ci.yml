@@ -118,6 +118,9 @@ jobs:
     timeout-minutes: 15
 
     steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
       - name: Wait for production application
         env:
           DAST_TARGET_URL: ${{ vars.DAST_TARGET_URL }}
@@ -136,6 +139,8 @@ jobs:
         uses: zaproxy/action-baseline@v0.15.0
         with:
           target: ${{ vars.DAST_TARGET_URL }}
+          rules_file_name: .zap/rules.tsv
+          cmd_options: -I
           allow_issue_writing: false
           fail_action: true
           artifact_name: zap-production-baseline-report

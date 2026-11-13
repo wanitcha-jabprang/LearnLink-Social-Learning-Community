@@ -26,6 +26,36 @@ class SiteMessageController {
     }
 }
 
+class InlineActionController {
+    constructor() {
+        document.addEventListener("click", (event) => this.handleClick(event));
+    }
+
+    handleClick(event) {
+        const action = event.target.closest(
+            "[data-confirm], [data-toggle-hidden], [data-hide-element], [data-alert]",
+        );
+        if (!action) return;
+
+        if (action.dataset.confirm && !window.confirm(action.dataset.confirm)) {
+            event.preventDefault();
+            return;
+        }
+
+        const toggleTarget = document.getElementById(
+            action.dataset.toggleHidden,
+        );
+        toggleTarget?.toggleAttribute("hidden");
+
+        const hideTarget = document.getElementById(action.dataset.hideElement);
+        hideTarget?.setAttribute("hidden", "true");
+
+        if (action.dataset.alert) {
+            window.alert(action.dataset.alert);
+        }
+    }
+}
+
 class ProfileCoverController {
     constructor() {
         this.input = document.querySelector("[data-profile-cover-input]");
@@ -326,6 +356,7 @@ class CommunityCoverPreviewController {
 }
 
 new SiteMessageController();
+new InlineActionController();
 new ProfileCoverController();
 new ProfileImageCropController();
 new PostMediaPreviewController();

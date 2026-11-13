@@ -67,23 +67,23 @@
                 {% if community.pk in joined_community_ids %}
                     {% if community.owner_id == request.user.pk %}
                     <!-- ปุ่มสำหรับเจ้าของกลุ่ม: แก้ไขชุมชน -->
-                    <button class="button-secondary" type="button" onclick="document.getElementById('edit-panel-{{ community.pk }}').toggleAttribute('hidden')">✏️ แก้ไขชุมชน</button>
+                    <button class="button-secondary" type="button" data-toggle-hidden="edit-panel-{{ community.pk }}">✏️ แก้ไขชุมชน</button>
 
                     <!-- ปุ่มสำหรับเจ้าของกลุ่ม (เตือนให้โอนสิทธิ์ก่อนออก) -->
-                    <button class="button-secondary" type="button" onclick="alert('คุณเป็นเจ้าของชุมชน ต้องทำการโอนสิทธิ์ความเป็นเจ้าของให้สมาชิกคนอื่นก่อน จึงจะสามารถออกจากชุมชนได้')">ออกจากชุมชน</button>
+                    <button class="button-secondary" type="button" data-alert="คุณเป็นเจ้าของชุมชน ต้องทำการโอนสิทธิ์ความเป็นเจ้าของให้สมาชิกคนอื่นก่อน จึงจะสามารถออกจากชุมชนได้">ออกจากชุมชน</button>
 
                     <!-- ปุ่มลบชุมชน (เฉพาะเจ้าของกลุ่ม) -->
                     <form action="{% url 'delete_community' community.pk %}" method="post">
                         {% csrf_token %}
                         <input type="hidden" name="next" value="/#communities-page">
-                        <button class="button-secondary" type="submit" style="color: #dc2626; border-color: #fca5a5;" onclick="return confirm('⚠️ คุณแน่ใจหรือไม่ว่าต้องการลบชุมชนนี้? ข้อมูลและโพสต์ทั้งหมดในชุมชนจะถูกลบถาวรและไม่สามารถกู้คืนได้!')">ลบชุมชน</button>
+                        <button class="button-secondary" type="submit" style="color: #dc2626; border-color: #fca5a5;" data-confirm="⚠️ คุณแน่ใจหรือไม่ว่าต้องการลบชุมชนนี้? ข้อมูลและโพสต์ทั้งหมดในชุมชนจะถูกลบถาวรและไม่สามารถกู้คืนได้!">ลบชุมชน</button>
                     </form>
                     {% else %}
                     <!-- ปุ่มออกจากกลุ่ม (สำหรับสมาชิกทั่วไป) -->
                     <form action="{% url 'leave_community' community.pk %}" method="post">
                         {% csrf_token %}
                         <input type="hidden" name="next" value="/#communities-page">
-                        <button class="button-secondary" type="submit" onclick="return confirm('คุณแน่ใจหรือไม่ว่าต้องการออกจากชุมชนนี้?')">ออกจากชุมชน</button>
+                        <button class="button-secondary" type="submit" data-confirm="คุณแน่ใจหรือไม่ว่าต้องการออกจากชุมชนนี้?">ออกจากชุมชน</button>
                     </form>
                     {% endif %}
                 {% else %}
@@ -141,7 +141,7 @@
 
                 <div style="margin-top: 12px; display: flex; gap: 8px;">
                     <button class="button-primary" type="submit">บันทึกการแก้ไข</button>
-                    <button class="button-secondary" type="button" onclick="document.getElementById('edit-panel-{{ community.pk }}').setAttribute('hidden', 'true')">ยกเลิก</button>
+                    <button class="button-secondary" type="button" data-hide-element="edit-panel-{{ community.pk }}">ยกเลิก</button>
                 </div>
             </form>
         </div>
@@ -171,7 +171,7 @@
                     <form action="{% url 'remove_member' community.pk cm.user.pk %}" method="post" style="margin: 0;">
                         {% csrf_token %}
                         <input type="hidden" name="next" value="/#community-{{ community.pk }}">
-                        <button type="submit" class="button-secondary" style="color: #dc2626; border-color: #fca5a5; padding: 2px 8px; font-size: 12px;" onclick="return confirm('คุณแน่ใจหรือไม่ว่าต้องการลบสมาชิกคนนี้ออกจากกลุ่ม?')">ลบออก</button>
+                        <button type="submit" class="button-secondary" style="color: #dc2626; border-color: #fca5a5; padding: 2px 8px; font-size: 12px;" data-confirm="คุณแน่ใจหรือไม่ว่าต้องการลบสมาชิกคนนี้ออกจากกลุ่ม?">ลบออก</button>
                     </form>
                     {% endif %}
                 </li>
@@ -195,7 +195,7 @@
                             {% endif %}
                         {% endfor %}
                     </select>
-                    <button type="submit" class="button-primary" style="padding: 4px 12px; font-size: 13px;" onclick="return confirm('คุณแน่ใจหรือไม่ที่จะโอนสิทธิ์เจ้าของกลุ่ม?')">โอนสิทธิ์</button>
+                    <button type="submit" class="button-primary" style="padding: 4px 12px; font-size: 13px;" data-confirm="คุณแน่ใจหรือไม่ที่จะโอนสิทธิ์เจ้าของกลุ่ม?">โอนสิทธิ์</button>
                 </form>
             </div>
             {% endif %}
